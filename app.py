@@ -13,6 +13,197 @@ st.set_page_config(
     layout="wide"
 )
 
+# Catálogo Maestro de Baterías -> Subpruebas y su Escala por defecto
+# Al seleccionar una prueba en el Paso 1, se cargan automáticamente estas filas en el Paso 4
+CATALOGO_SUBPRUEBAS = {
+    "WISC-V": [
+        ("WISC-V - Coeficiente Intelectual Total (CIT)", "CI / Estándar (M=100, DE=15)"),
+        ("WISC-V - Índice de Capacidad General (ICG)", "CI / Estándar (M=100, DE=15)"),
+        ("WISC-V - Índice de Comprensión Verbal (ICV)", "CI / Estándar (M=100, DE=15)"),
+        ("WISC-V - Índice Visoespacial (IVE)", "CI / Estándar (M=100, DE=15)"),
+        ("WISC-V - Índice de Razonamiento Fluido (IRF)", "CI / Estándar (M=100, DE=15)"),
+        ("WISC-V - Índice de Memoria de Trabajo (IMT)", "CI / Estándar (M=100, DE=15)"),
+        ("WISC-V - Índice de Velocidad de Procesamiento (IVP)", "CI / Estándar (M=100, DE=15)"),
+        ("WISC-V - Semejanzas", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Vocabulario", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Cubos", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Puzles Visuales", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Matrices", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Balanzas", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Dígitos", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Span de Dibujos", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Claves", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Búsqueda de Símbolos", "Escalar (M=10, DE=3)"),
+        ("WISC-V - Aritmética", "Escalar (M=10, DE=3)"),
+    ],
+    "WPPSI-IV": [
+        ("WPPSI-IV - Coeficiente Intelectual Total (CIT)", "CI / Estándar (M=100, DE=15)"),
+        ("WPPSI-IV - Índice de Comprensión Verbal (ICV)", "CI / Estándar (M=100, DE=15)"),
+        ("WPPSI-IV - Índice Visoespacial (IVE)", "CI / Estándar (M=100, DE=15)"),
+        ("WPPSI-IV - Índice de Razonamiento Fluido (IRF)", "CI / Estándar (M=100, DE=15)"),
+        ("WPPSI-IV - Índice de Memoria de Trabajo (IMT)", "CI / Estándar (M=100, DE=15)"),
+        ("WPPSI-IV - Índice de Velocidad de Procesamiento (IVP)", "CI / Estándar (M=100, DE=15)"),
+        ("WPPSI-IV - Información", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Semejanzas", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Cubos", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Rompecabezas", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Matrices", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Conceptos", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Reconocimiento", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Localización", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Búsqueda de Animales", "Escalar (M=10, DE=3)"),
+        ("WPPSI-IV - Cancelación", "Escalar (M=10, DE=3)"),
+    ],
+    "WAIS-IV": [
+        ("WAIS-IV - Coeficiente Intelectual Total (CIT)", "CI / Estándar (M=100, DE=15)"),
+        ("WAIS-IV - Índice de Comprensión Verbal (ICV)", "CI / Estándar (M=100, DE=15)"),
+        ("WAIS-IV - Índice de Razonamiento Perceptivo (IRP)", "CI / Estándar (M=100, DE=15)"),
+        ("WAIS-IV - Índice de Memoria de Trabajo (IMT)", "CI / Estándar (M=100, DE=15)"),
+        ("WAIS-IV - Índice de Velocidad de Procesamiento (IVP)", "CI / Estándar (M=100, DE=15)"),
+        ("WAIS-IV - Semejanzas", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Vocabulario", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Información", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Cubos", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Matrices", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Puzles Visuales", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Dígitos", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Aritmética", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Letras y Números", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Búsqueda de Símbolos", "Escalar (M=10, DE=3)"),
+        ("WAIS-IV - Clave de Números", "Escalar (M=10, DE=3)"),
+    ],
+    "NEPSY-II": [
+        ("NEPSY-II - Atención Auditiva", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Flexibilidad Cognitiva (Cambio de criterio)", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Estatua (Control Inhibitorio)", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Fluidez de Diseños", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Procesamiento Fonológico", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Denominación Veloz", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Comprensión de Instrucciones", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Generación de Palabras (Semántica)", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Generación de Palabras (Fonológica)", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Copia de Diseños", "Escalar (M=10, DE=3)"),
+        ("NEPSY-II - Precisión Visomotora", "Escalar (M=10, DE=3)"),
+    ],
+    "TOMAL": [
+        ("TOMAL - Recuerdo Selectivo de Palabras (Inmediato)", "Escalar (M=10, DE=3)"),
+        ("TOMAL - Recuerdo Selectivo de Palabras (Demorado)", "Escalar (M=10, DE=3)"),
+        ("TOMAL - Memoria Visual Abstracta", "Escalar (M=10, DE=3)"),
+        ("TOMAL - Memoria de Secuencias / Dígitos", "Escalar (M=10, DE=3)"),
+    ],
+    "WRAML": [
+        ("WRAML - Memoria Narrativa (Recuerdo Inmediato)", "Escalar (M=10, DE=3)"),
+        ("WRAML - Memoria Narrativa (Recuerdo Demorado)", "Escalar (M=10, DE=3)"),
+        ("WRAML - Reconocimiento Narrativo", "Escalar (M=10, DE=3)"),
+    ],
+    "Stroop": [
+        ("Stroop - Lectura de Palabras (P)", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("Stroop - Denominación de Colores (C)", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("Stroop - Palabra-Color (PC)", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("Stroop - Índice de Interferencia", "T Directo - Mayor es mejor (M=50, DE=10)"),
+    ],
+    "Trail Making Test (TMT)": [
+        ("Trail Making Test - Parte A (Atención Sostenida/Selectiva)", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("Trail Making Test - Parte B (Atención Dividida/Flexibilidad)", "T Directo - Mayor es mejor (M=50, DE=10)"),
+    ],
+    "CPT-II": [
+        ("CPT-II - Omisiones (Inatención)", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("CPT-II - Comisiones (Impulsividad)", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("CPT-II - Tiempo de Reacción (Hit RT)", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("CPT-II - Variabilidad / Consistencia (Hit RT Std Error)", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("CPT-II - Perseveraciones", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+    ],
+    "Nesplora Aula": [
+        ("Nesplora Aula - Omisiones Totales", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("Nesplora Aula - Comisiones Totales", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("Nesplora Aula - Tiempo de Reacción (TR)", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("Nesplora Aula - Variabilidad del TR", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("Nesplora Aula - Actividad Motora", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+    ],
+    "Figura Compleja de Rey": [
+        ("Figura Compleja de Rey - Copia", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("Figura Compleja de Rey - Memoria Inmediata (3 min)", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("Figura Compleja de Rey - Memoria Diferida (30 min)", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("Figura Compleja de Rey - Reconocimiento", "T Directo - Mayor es mejor (M=50, DE=10)"),
+    ],
+    "WCST": [
+        ("WCST - Categorías Completadas", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("WCST - Respuestas Perseverativas", "T Directo - Mayor es mejor (M=50, DE=10)"),
+        ("WCST - Errores Perseverativos", "T Directo - Mayor es mejor (M=50, DE=10)"),
+    ],
+    "RAVLT": [
+        ("RAVLT - Total Aprendizaje (Ensayos A1-A5)", "Puntaje Z directo"),
+        ("RAVLT - Lista Interferencia (B1)", "Puntaje Z directo"),
+        ("RAVLT - Recuerdo Inmediato Post-Interferencia (A6)", "Puntaje Z directo"),
+        ("RAVLT - Recuerdo Diferido (A7)", "Puntaje Z directo"),
+        ("RAVLT - Reconocimiento", "Puntaje Z directo"),
+    ],
+    "BRIEF": [
+        ("BRIEF - Inhibición", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Cambio / Flexibilidad", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Control Emocional", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Índice de Regulación Conductual (BRI)", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Iniciativa", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Memoria de Trabajo", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Planificación y Organización", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Organización de Materiales", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Monitoreo / Supervisión", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Índice de Metacognición (MI)", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+        ("BRIEF - Índice Global de Función Ejecutiva (GEC)", "T Inverso - Mayor es peor/error (M=50, DE=10)"),
+    ],
+    "Vineland": [
+        ("Vineland - Comunicación", "CI / Estándar (M=100, DE=15)"),
+        ("Vineland - Habilidades de la Vida Diaria", "CI / Estándar (M=100, DE=15)"),
+        ("Vineland - Socialización", "CI / Estándar (M=100, DE=15)"),
+        ("Vineland - Habilidades Motoras", "CI / Estándar (M=100, DE=15)"),
+        ("Vineland - Índice Compuesto de Conducta Adaptativa", "CI / Estándar (M=100, DE=15)"),
+    ],
+    "PROLEC-R / PROLEC-SE-R": [
+        ("PROLEC - Lectura de Palabras (Precisión y Velocidad)", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("PROLEC - Lectura de Pseudopalabras (Precisión y Velocidad)", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("PROLEC - Estructuras Gramaticales", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("PROLEC - Signos de Puntuación", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("PROLEC - Comprensión de Oraciones", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("PROLEC - Comprensión de Textos", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("PROLEC - Comprensión Oral", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ],
+    "Woodcock-Muñoz": [
+        ("Woodcock-Muñoz - Cálculo (Colocar Edad Equivalente en Notas)", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("Woodcock-Muñoz - Problemas Aplicados (Colocar Edad Equivalente en Notas)", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("Woodcock-Muñoz - Identificación de Letras y Palabras", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("Woodcock-Muñoz - Comprensión de Textos", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ],
+    "TEMA-3": [
+        ("TEMA-3 - Índice de Competencia Matemática", "CI / Estándar (M=100, DE=15)"),
+    ],
+    "TOMA-3": [
+        ("TOMA-3 - Cociente Matemático Global", "CI / Estándar (M=100, DE=15)"),
+    ],
+    "Ortografía Feldman": [
+        ("Escala de Ortografía (Feldman) - Puntaje Total", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ],
+    "NALPA": [
+        ("NALPA - Nivel de Alfabetización (Detallar en Notas)", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ],
+    "EPL": [
+        ("EPL - Evaluación de las Primeras Letras", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ],
+    "Dictado de oraciones": [
+        ("Dictado de Oraciones - Rendimiento Global", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ],
+    "SNAP-IV": [
+        ("SNAP-IV - Indicadores de Inatención", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("SNAP-IV - Indicadores de Hiperactividad / Impulsividad", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ],
+    "Escala Durand": [
+        ("Escala Motivacional de Durand - Perfil", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ],
+    "DIVA-5": [
+        ("DIVA-5 - Criterios Déficit de Atención (Adultez / Infancia)", "Puntaje Bruto / Categoría (Ver Notas)"),
+        ("DIVA-5 - Criterios Hiperactividad-Impulsividad (Adultez / Infancia)", "Puntaje Bruto / Categoría (Ver Notas)"),
+    ]
+}
+
 # Introducciones teóricas en cursiva (Base de Conocimiento Clínica)
 INTRODUCCIONES_DOMINIOS = {
     "intelectual": (
@@ -86,7 +277,9 @@ BANCO_SUGERENCIAS = {
 # 2. FUNCIONES DE CONVERSIÓN PSICOMÉTRICA A PUNTAJE Z
 # =====================================================================
 def calcular_z_y_rango(valor: float, tipo_escala: str):
-    if tipo_escala == "CI / Estándar (M=100, DE=15)":
+    if tipo_escala == "Puntaje Bruto / Categoría (Ver Notas)":
+        return None, "Puntaje Bruto / Cualitativo"
+    elif tipo_escala == "CI / Estándar (M=100, DE=15)":
         z = (valor - 100.0) / 15.0
     elif tipo_escala == "Escalar (M=10, DE=3)":
         z = (valor - 10.0) / 3.0
@@ -208,7 +401,6 @@ with st.sidebar:
 
 # ---------------------------------------------------------------------
 # SECCIÓN 1: MODELO DE INFORME Y PRUEBAS ADMINISTRADAS
-# (Todo arranca vacío, sin ninguna sugerencia preseleccionada)
 # ---------------------------------------------------------------------
 st.header("1. Tipo de Informe y Baterías Administradas")
 
@@ -230,15 +422,8 @@ with col_mod1:
 
 with col_mod2:
     pruebas_usadas = st.multiselect(
-        "Seleccioná las pruebas y test administrados:",
-        [
-            "WISC-V", "WPPSI-IV", "WAIS-IV", "NEPSY-II", "TOMAL", "WRAML",
-            "Stroop", "Trail Making Test (TMT)", "CPT-II", "Nesplora Aula",
-            "SNAP-IV", "BRIEF", "Woodcock-Muñoz", "PROLEC-R / PROLEC-SE-R",
-            "Figura Compleja de Rey", "Ortografía Feldman", "NALPA", "TOMA-3",
-            "TEMA-3", "Dictado de oraciones", "EPL", "Escala Durand", "WCST",
-            "RAVLT", "Vineland", "DIVA-5"
-        ],
+        "Seleccioná las pruebas y test administrados (cargará sus subpruebas en el Paso 4):",
+        list(CATALOGO_SUBPRUEBAS.keys()),
         default=[],
         placeholder="Elegí las pruebas administradas..."
     )
@@ -300,22 +485,80 @@ obs_extra = st.text_area("Observaciones cualitativas adicionales de la conducta"
 st.divider()
 
 # ---------------------------------------------------------------------
-# SECCIÓN 4: CARGA DE PUNTAJES, PLANILLAS Y PDFs
+# SECCIÓN 4: CARGA DE PUNTAJES AUTOMÁTICA SEGÚN PRUEBAS SELECCIONADAS
 # ---------------------------------------------------------------------
 st.header("4. Puntuaciones Cuantitativas y Reportes Adjuntos")
-st.caption("Cargá los puntajes en la grilla para que el sistema calcule automáticamente el Puntaje Z y el Rango, o pegá los datos directamente abajo.")
+st.caption(
+    "Las subpruebas y sus escalas se cargan automáticamente según lo que elegiste en el Paso 1. "
+    "Solo completá la columna 'Puntaje Obtenido' (las filas que dejes sin puntaje se ignoran automáticamente)."
+)
 
-df_vacio = pd.DataFrame(
-    columns=["Dominio / Prueba", "Puntaje", "Tipo de Escala", "Observación"]
+# Sincronización dinámica entre las pruebas del Paso 1 y la tabla del Paso 4
+# conservando los puntajes que el usuario ya haya tipeado
+if "df_puntajes_state" not in st.session_state:
+    st.session_state.df_puntajes_state = pd.DataFrame(
+        columns=["Dominio / Prueba / Subtest", "Puntaje", "Tipo de Escala", "Observación"]
+    )
+
+# Guardar en un diccionario lo que el usuario ya había cargado para no perderlo al agregar otra prueba
+valores_previos = {}
+if not st.session_state.df_puntajes_state.empty:
+    for _, r in st.session_state.df_puntajes_state.iterrows():
+        sub_key = r.get("Dominio / Prueba / Subtest")
+        if sub_key:
+            valores_previos[sub_key] = (r.get("Puntaje"), r.get("Tipo de Escala"), r.get("Observación", ""))
+
+filas_auto = []
+subpruebas_vistas = set()
+for prueba in pruebas_usadas:
+    for nombre_sub, escala_defecto in CATALOGO_SUBPRUEBAS.get(prueba, []):
+        subpruebas_vistas.add(nombre_sub)
+        if nombre_sub in valores_previos:
+            punt_prev, esc_prev, obs_prev = valores_previos[nombre_sub]
+            filas_auto.append({
+                "Dominio / Prueba / Subtest": nombre_sub,
+                "Puntaje": punt_prev,
+                "Tipo de Escala": esc_prev or escala_defecto,
+                "Observación": obs_prev
+            })
+        else:
+            filas_auto.append({
+                "Dominio / Prueba / Subtest": nombre_sub,
+                "Puntaje": None,
+                "Tipo de Escala": escala_defecto,
+                "Observación": ""
+            })
+
+# Conservar también filas personalizadas que el usuario haya agregado manualmente al final
+for sub_key, (punt_prev, esc_prev, obs_prev) in valores_previos.items():
+    if sub_key not in subpruebas_vistas and pd.notnull(punt_prev):
+        filas_auto.append({
+            "Dominio / Prueba / Subtest": sub_key,
+            "Puntaje": punt_prev,
+            "Tipo de Escala": esc_prev,
+            "Observación": obs_prev
+        })
+
+df_para_editar = pd.DataFrame(
+    filas_auto,
+    columns=["Dominio / Prueba / Subtest", "Puntaje", "Tipo de Escala", "Observación"]
 )
 
 df_editado = st.data_editor(
-    df_vacio,
+    df_para_editar,
     num_rows="dynamic",
     use_container_width=True,
+    key="editor_subpruebas",
     column_config={
-        "Dominio / Prueba": st.column_config.TextColumn("Dominio / Prueba / Subtest"),
-        "Puntaje": st.column_config.NumberColumn("Puntaje Obtenido", format="%.2f"),
+        "Dominio / Prueba / Subtest": st.column_config.TextColumn(
+            "Dominio / Prueba / Subtest",
+            width="large"
+        ),
+        "Puntaje": st.column_config.NumberColumn(
+            "Puntaje Obtenido",
+            format="%.2f",
+            help="Ingresá el puntaje. Si no tomaste este subtest, dejalo vacío."
+        ),
         "Tipo de Escala": st.column_config.SelectboxColumn(
             "Tipo de Escala",
             options=[
@@ -323,33 +566,53 @@ df_editado = st.data_editor(
                 "Escalar (M=10, DE=3)",
                 "T Directo - Mayor es mejor (M=50, DE=10)",
                 "T Inverso - Mayor es peor/error (M=50, DE=10)",
-                "Puntaje Z directo"
+                "Puntaje Z directo",
+                "Puntaje Bruto / Categoría (Ver Notas)"
             ]
         ),
-        "Observación": st.column_config.TextColumn("Notas de la prueba")
+        "Observación": st.column_config.TextColumn(
+            "Notas de la prueba (ej. Edad Equivalente / Categoría PROLEC)"
+        )
     }
 )
 
+# Actualizar el estado con las ediciones del usuario
+st.session_state.df_puntajes_state = df_editado.copy()
+
+# Procesar solo las filas donde el usuario cargó un puntaje o una nota
 filas_procesadas = []
 for _, row in df_editado.iterrows():
-    if row.get("Dominio / Prueba") and pd.notnull(row.get("Puntaje")) and row.get("Tipo de Escala"):
-        z_val, r_val = calcular_z_y_rango(float(row["Puntaje"]), row["Tipo de Escala"])
+    nombre_item = row.get("Dominio / Prueba / Subtest")
+    puntaje_item = row.get("Puntaje")
+    escala_item = row.get("Tipo de Escala")
+    nota_item = str(row.get("Observación") or "").strip()
+
+    if nombre_item and (pd.notnull(puntaje_item) or nota_item):
+        if pd.notnull(puntaje_item) and escala_item:
+            z_val, r_val = calcular_z_y_rango(float(puntaje_item), escala_item)
+            z_str = f"{z_val:+.2f}" if z_val is not None else "N/A"
+        else:
+            z_str = "N/A"
+            r_val = "Cualitativo / Ver Notas"
+
         filas_procesadas.append({
-            "Dominio / Prueba": row["Dominio / Prueba"],
-            "Puntaje": row["Puntaje"],
-            "Escala": row["Tipo de Escala"],
-            "Puntaje Z": f"{z_val:+.2f}",
+            "Dominio / Prueba / Subtest": nombre_item,
+            "Puntaje Obtenido": puntaje_item if pd.notnull(puntaje_item) else "-",
+            "Escala": escala_item,
+            "Puntaje Z": z_str,
             "Rango Clínico": r_val,
-            "Notas": row.get("Observación", "")
+            "Notas": nota_item
         })
+
 df_procesado = pd.DataFrame(filas_procesadas)
 if not df_procesado.empty:
+    st.markdown("##### ✅ Resumen de Puntuaciones Calculadas (que se enviarán al informe):")
     st.dataframe(df_procesado, use_container_width=True)
 
 col_p1, col_p2 = st.columns(2)
 with col_p1:
     texto_puntajes_libre = st.text_area(
-        "Pegar tabla de puntuaciones o resultados crudos (Excel / Planilla / Notas):",
+        "Pegar tabla de puntuaciones o resultados crudos adicionales (Excel / Planilla / Notas):",
         height=130
     )
 with col_p2:
@@ -404,8 +667,7 @@ with col_q2:
 st.divider()
 
 # ---------------------------------------------------------------------
-# SECCIÓN 6: CONCLUSIONES Y SUGERENCIAS FINALES (CLARAS Y DESPLEGADAS)
-# (Todo arranca sin ninguna opción seleccionada)
+# SECCIÓN 6: CONCLUSIONES Y SUGERENCIAS FINALES
 # ---------------------------------------------------------------------
 st.header("6. Conclusiones y Sugerencias Finales")
 
@@ -440,7 +702,6 @@ recom_personalizadas = st.text_area(
     height=75
 )
 
-# Vista previa clara de las sugerencias seleccionadas que se redactarán en el informe
 if sug_terapeuticas_sel or sug_escolares_sel:
     with st.expander("👁️ Ver texto base de las sugerencias seleccionadas", expanded=True):
         if sug_terapeuticas_sel:
@@ -479,9 +740,12 @@ if boton_generar:
                         texto_archivo = archivo.read().decode("utf-8", errors="ignore")
                         contenido_multimedia.append(f"\n--- Archivo adjunto ({archivo.name}) ---\n{texto_archivo}\n")
 
-                tabla_z_markdown = df_procesado.to_markdown(index=False) if not df_procesado.empty else "No se ingresaron filas en la grilla interactiva."
+                tabla_z_markdown = (
+                    df_procesado.to_markdown(index=False)
+                    if not df_procesado.empty
+                    else "No se completaron puntajes en la grilla interactiva."
+                )
 
-                # Armar el detalle explícito de las sugerencias seleccionadas
                 detalle_terapeuticas = "\n".join(
                     [f"- {k}: {BANCO_SUGERENCIAS['terapeuticas'][k]}" for k in sug_terapeuticas_sel]
                 ) or "Adaptar automáticamente según el perfil clínico descrito."
