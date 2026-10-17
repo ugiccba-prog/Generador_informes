@@ -453,11 +453,10 @@ with st.form("formulario_integral"):
         "Escolar (Lectoescritura): Uso de tipografía clara (imprenta mayúscula o Arial 12 con interlineado 1.5) y verificación oral de la comprensión de consignas.",
         "Escolar (Regulación): Implementación de pausas activas programadas cada 20-25 minutos de demanda cognitiva sostenida para mitigar la fatiga atencional."
     ]
-    sugerencias_seleccionadas = st.multiselect(
+sugerencias_seleccionadas = st.multiselect(
         "Seleccioná las recomendaciones estandarizadas:",
         options=opciones_sugerencias,
         default=[]
-    )
     )
     sugerencia_extra = st.text_input(
         "Agregar recomendación personalizada adicional (opcional):",
