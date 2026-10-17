@@ -351,7 +351,7 @@ with st.form("formulario_integral"):
         escolaridad = st.text_input("Escolaridad / Grado", value="")
     with col3:
         fecha_eval = st.text_input("Fecha de Evaluación", value="")
-        profesional = st.text_input("Profesional Actuante", value="Lic. Juan Ignacio Machado")
+        profesional = st.text_input("Profesional Actuante", value="")
 
     col_mot, col_obs = st.columns(2)
     with col_mot:
