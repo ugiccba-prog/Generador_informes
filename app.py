@@ -456,7 +456,8 @@ with st.form("formulario_integral"):
     sugerencias_seleccionadas = st.multiselect(
         "Seleccioná las recomendaciones estandarizadas:",
         options=opciones_sugerencias,
-        default=opciones_sugerencias[:7]
+        default=[]
+    )
     )
     sugerencia_extra = st.text_input(
         "Agregar recomendación personalizada adicional (opcional):",
