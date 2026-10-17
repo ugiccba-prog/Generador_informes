@@ -41,7 +41,7 @@ genai.configure(api_key=API_KEY)
 # ==============================================================================
 def calcular_metricas_psicometricas(valor: float, tipo_escala: str, invertido: bool = False):
     """
-    Calcula el Puntaje Z exacto y el percentil estimado sin intervención de IA:
+    Calcula el Puntaje Z exacto y la clasificación normativa sin intervención de IA:
     - CI / Estándar: Media = 100, DE = 15
     - Escalar: Media = 10, DE = 3
     - Puntaje T: Media = 50, DE = 10 (Si invertido=True, +T indica mayor síntoma/dificultad)
@@ -170,7 +170,7 @@ def inyectar_texto_formateado_en_word(doc: Document, texto_ia: str):
 def construir_documento_word(datos_fil: dict, grilla: list, texto_ia: str, sugerencias: list) -> io.BytesIO:
     doc = Document()
 
-    # Márgenes institucionales (2.54 cm)
+    # Márgenes institucionales
     for section in doc.sections:
         section.top_margin = Inches(0.9)
         section.bottom_margin = Inches(0.9)
@@ -288,19 +288,20 @@ def construir_documento_word(datos_fil: dict, grilla: list, texto_ia: str, suger
     doc.add_paragraph()
 
     # 4. Banco de Sugerencias y Adaptaciones
-    h4 = doc.add_heading("4. Sugerencias Terapéuticas y Adaptaciones Escolares", level=2)
-    for r in h4.runs:
-        r.font.name = "Arial"
-        r.font.size = Pt(11.5)
-        r.font.color.rgb = RGBColor(20, 50, 90)
+    if sugerencias:
+        h4 = doc.add_heading("4. Sugerencias Terapéuticas y Adaptaciones Escolares", level=2)
+        for r in h4.runs:
+            r.font.name = "Arial"
+            r.font.size = Pt(11.5)
+            r.font.color.rgb = RGBColor(20, 50, 90)
 
-    for sug in sugerencias:
-        p_sug = doc.add_paragraph(style="List Bullet")
-        p_sug.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        p_sug.paragraph_format.space_after = Pt(4)
-        run_s = p_sug.add_run(sug)
-        run_s.font.name = "Arial"
-        run_s.font.size = Pt(10.5)
+        for sug in sugerencias:
+            p_sug = doc.add_paragraph(style="List Bullet")
+            p_sug.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            p_sug.paragraph_format.space_after = Pt(4)
+            run_s = p_sug.add_run(sug)
+            run_s.font.name = "Arial"
+            run_s.font.size = Pt(10.5)
 
     # Recuadro Ético Médico Obligatorio
     doc.add_paragraph()
@@ -321,9 +322,10 @@ def construir_documento_word(datos_fil: dict, grilla: list, texto_ia: str, suger
     run_legal.font.size = Pt(9.5)
 
     # Firma Profesional
+    firma_nombre = datos_fil["profesional"] if datos_fil["profesional"].strip() else "Profesional Actuante"
     p_firma = doc.add_paragraph("\n\n________________________________________\n")
     p_firma.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    run_f = p_firma.add_run(f"{datos_fil['profesional']}\nEvaluación Neuropsicológica y Psicopedagógica")
+    run_f = p_firma.add_run(f"{firma_nombre}\nEvaluación Neuropsicológica y Psicopedagógica")
     run_f.bold = True
     run_f.font.name = "Arial"
     run_f.font.size = Pt(10)
@@ -335,7 +337,7 @@ def construir_documento_word(datos_fil: dict, grilla: list, texto_ia: str, suger
 
 
 # ==============================================================================
-# 4. INTERFAZ WEB COMPLETA CON PESTAÑAS CLÍNICAS (CAMPOS VACÍOS)
+# 4. INTERFAZ WEB COMPLETA CON TODOS LOS CAMPOS EN BLANCO POR DEFECTO
 # ==============================================================================
 st.title("🧠 Plataforma de Informes Neuropsicológicos y Psicopedagógicos")
 st.markdown("Cálculo psicométrico determinista en Puntaje Z + Redacción clínica asistida con estándar institucional.")
@@ -453,13 +455,14 @@ with st.form("formulario_integral"):
         "Escolar (Lectoescritura): Uso de tipografía clara (imprenta mayúscula o Arial 12 con interlineado 1.5) y verificación oral de la comprensión de consignas.",
         "Escolar (Regulación): Implementación de pausas activas programadas cada 20-25 minutos de demanda cognitiva sostenida para mitigar la fatiga atencional."
     ]
-sugerencias_seleccionadas = st.multiselect(
+    sugerencias_seleccionadas = st.multiselect(
         "Seleccioná las recomendaciones estandarizadas:",
         options=opciones_sugerencias,
         default=[]
     )
     sugerencia_extra = st.text_input(
         "Agregar recomendación personalizada adicional (opcional):",
+        value="",
         placeholder="Ej: Articulación periódica entre el equipo tratante externo y el gabinete escolar."
     )
 
@@ -580,10 +583,11 @@ if boton_generar:
             sugerencias=lista_sugerencias_final
         )
 
+        nombre_pac_limpio = paciente.strip().replace(", ", "_").replace(" ", "_") if paciente.strip() else "Paciente"
         st.session_state.grilla_final = grilla_calculada
         st.session_state.informe_texto = texto_ia
         st.session_state.informe_docx = archivo_word_memoria
-        st.session_state.nombre_archivo = f"Informe_Clinico_{paciente.replace(', ', '_').replace(' ', '_')}.docx"
+        st.session_state.nombre_archivo = f"Informe_Clinico_{nombre_pac_limpio}.docx"
 
 # ==============================================================================
 # 6. PANEL DE RESULTADOS PERSISTENTE Y DESCARGA
