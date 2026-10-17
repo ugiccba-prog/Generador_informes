@@ -28,21 +28,10 @@ if "grilla_final" not in st.session_state:
     st.session_state.grilla_final = []
 
 # Lectura segura de API Key (Nube en Streamlit Secrets o Local en PC)
-import os
-
-API_KEY = None
 try:
-    if "GEMINI_API_KEY" in st.secrets:
-        API_KEY = st.secrets["GEMINI_API_KEY"]
+    API_KEY = st.secrets["GEMINI_API_KEY"]
 except Exception:
-    pass
-
-if not API_KEY:
-    API_KEY = os.environ.get("GEMINI_API_KEY")
-
-if not API_KEY:
-    st.error("⚠️ No se encontró la API Key de Gemini. Configurala en `.streamlit/secrets.toml` o en los Secrets de Streamlit Cloud.")
-    st.stop()
+    API_KEY = "TU_API_KEY_LOCAL"
 
 genai.configure(api_key=API_KEY)
 
@@ -272,7 +261,6 @@ def construir_documento_word(datos_fil: dict, grilla: list, texto_ia: str, suger
         row_cells[4].text = fila["z_str"]
         row_cells[5].text = fila["rango"]
 
-        # Color suave en la celda de clasificación si hay descenso marcado
         color_fila = "FCE4D6" if fila["z_num"] <= -1.33 else None
 
         for idx_c, c in enumerate(row_cells):
@@ -347,7 +335,7 @@ def construir_documento_word(datos_fil: dict, grilla: list, texto_ia: str, suger
 
 
 # ==============================================================================
-# 4. INTERFAZ WEB COMPLETA CON PESTAÑAS CLÍNICAS
+# 4. INTERFAZ WEB COMPLETA CON PESTAÑAS CLÍNICAS (CAMPOS VACÍOS)
 # ==============================================================================
 st.title("🧠 Plataforma de Informes Neuropsicológicos y Psicopedagógicos")
 st.markdown("Cálculo psicométrico determinista en Puntaje Z + Redacción clínica asistida con estándar institucional.")
@@ -356,25 +344,25 @@ with st.form("formulario_integral"):
     st.subheader("1. Datos de Filiación y Contexto Clínico")
     col1, col2, col3 = st.columns(3)
     with col1:
-        paciente = st.text_input("Apellido y Nombre / Iniciales", value="Pérez, Mateo")
-        edad = st.text_input("Edad (Años y meses)", value="9 años, 4 meses")
+        paciente = st.text_input("Apellido y Nombre / Iniciales", value="")
+        edad = st.text_input("Edad (Años y meses)", value="")
     with col2:
-        hc = st.text_input("N° de HC / Legajo", value="402891")
-        escolaridad = st.text_input("Escolaridad / Grado", value="4° Grado Nivel Primario")
+        hc = st.text_input("N° de HC / Legajo", value="")
+        escolaridad = st.text_input("Escolaridad / Grado", value="")
     with col3:
-        fecha_eval = st.text_input("Fecha de Evaluación", value="Octubre 2026")
+        fecha_eval = st.text_input("Fecha de Evaluación", value="")
         profesional = st.text_input("Profesional Actuante", value="Lic. Juan Ignacio Machado")
 
     col_mot, col_obs = st.columns(2)
     with col_mot:
         motivo_consulta = st.text_area(
             "Motivo de Consulta / Derivación",
-            value="Derivación médica y escolar por dificultades en el sostenimiento atencional, lentitud ejecutiva en el copiado del pizarrón y fatiga ante demandas extensas de lectoescritura."
+            value=""
         )
     with col_obs:
         observacion_conducta = st.text_area(
             "Observación Conductual en Sesión",
-            value="Ingresó con adecuada disposición vincular y buena comprensión de pautas iniciales. Hacia los 25 minutos de exigencia cognitiva evidenció fatiga, inquietud motora leve y necesidad de instigación verbal y segmentación de consignas."
+            value=""
         )
 
     st.divider()
@@ -390,68 +378,68 @@ with st.form("formulario_integral"):
     ])
 
     with tab_wisc:
-        incluir_wisc = st.checkbox("Incluir batería WISC-V en el informe", value=True)
+        incluir_wisc = st.checkbox("Incluir batería WISC-V en el informe", value=False)
         w1, w2, w3, w4, w5, w6 = st.columns(6)
         with w1:
-            icv = st.number_input("Comp. Verbal (ICV)", 40, 160, 106)
+            icv = st.number_input("Comp. Verbal (ICV)", 40, 160, 100, step=1)
         with w2:
-            ive = st.number_input("Visuoespacial (IVE)", 40, 160, 97)
+            ive = st.number_input("Visuoespacial (IVE)", 40, 160, 100, step=1)
         with w3:
-            irf = st.number_input("Raz. Fluido (IRF)", 40, 160, 100)
+            irf = st.number_input("Raz. Fluido (IRF)", 40, 160, 100, step=1)
         with w4:
-            imt = st.number_input("Mem. Trabajo (IMT)", 40, 160, 78)
+            imt = st.number_input("Mem. Trabajo (IMT)", 40, 160, 100, step=1)
         with w5:
-            ivp = st.number_input("Vel. Procesam. (IVP)", 40, 160, 81)
+            ivp = st.number_input("Vel. Procesam. (IVP)", 40, 160, 100, step=1)
         with w6:
-            cit = st.number_input("CI Total (CIT)", 40, 160, 91)
+            cit = st.number_input("CI Total (CIT)", 40, 160, 100, step=1)
 
     with tab_atencion:
-        incluir_atencion = st.checkbox("Incluir pruebas de Atención y Funciones Ejecutivas", value=True)
+        incluir_atencion = st.checkbox("Incluir pruebas de Atención y Funciones Ejecutivas", value=False)
         a1, a2, a3, a4, a5 = st.columns(5)
         with a1:
-            cpt_omi = st.number_input("CPT / Nesplora: Omisiones (T)", 20, 100, 66)
+            cpt_omi = st.number_input("CPT / Nesplora: Omisiones (T)", 20, 100, 50, step=1)
         with a2:
-            cpt_com = st.number_input("CPT / Nesplora: Comisiones (T)", 20, 100, 54)
+            cpt_com = st.number_input("CPT / Nesplora: Comisiones (T)", 20, 100, 50, step=1)
         with a3:
-            cpt_rt = st.number_input("CPT / Nesplora: Tiempo Reacción (T)", 20, 100, 62)
+            cpt_rt = st.number_input("CPT / Nesplora: Tiempo Reacción (T)", 20, 100, 50, step=1)
         with a4:
-            nepsy_inh = st.number_input("NEPSY-II: Inhibición (Escalar)", 1, 19, 7)
+            nepsy_inh = st.number_input("NEPSY-II: Inhibición (Escalar)", 1, 19, 10, step=1)
         with a5:
-            nepsy_flu = st.number_input("NEPSY-II: Fluidez Diseños (Escalar)", 1, 19, 9)
+            nepsy_flu = st.number_input("NEPSY-II: Fluidez Diseños (Escalar)", 1, 19, 10, step=1)
 
     with tab_memoria:
-        incluir_memoria = st.checkbox("Incluir pruebas de Memoria y Aprendizaje (TOMAL)", value=True)
+        incluir_memoria = st.checkbox("Incluir pruebas de Memoria y Aprendizaje (TOMAL)", value=False)
         m1, m2, m3 = st.columns(3)
         with m1:
-            tomal_mv = st.number_input("TOMAL: Memoria Verbal (Escalar)", 1, 19, 9)
+            tomal_mv = st.number_input("TOMAL: Memoria Verbal (Escalar)", 1, 19, 10, step=1)
         with m2:
-            tomal_mnv = st.number_input("TOMAL: Memoria No Verbal (Escalar)", 1, 19, 10)
+            tomal_mnv = st.number_input("TOMAL: Memoria No Verbal (Escalar)", 1, 19, 10, step=1)
         with m3:
-            tomal_rd = st.number_input("TOMAL: Recuerdo Demorado (Escalar)", 1, 19, 8)
+            tomal_rd = st.number_input("TOMAL: Recuerdo Demorado (Escalar)", 1, 19, 10, step=1)
 
     with tab_lecto:
-        incluir_lecto = st.checkbox("Incluir Lectoescritura y Cálculo (PROLEC-R / Woodcock-Muñoz)", value=True)
+        incluir_lecto = st.checkbox("Incluir Lectoescritura y Cálculo (PROLEC-R / Woodcock-Muñoz)", value=False)
         l1, l2, l3, l4, l5 = st.columns(5)
         with l1:
-            prolec_pal = st.number_input("PROLEC-R: Lectura Palabras (Z)", -4.0, 4.0, -1.5, step=0.1)
+            prolec_pal = st.number_input("PROLEC-R: Lectura Palabras (Z)", -4.0, 4.0, 0.0, step=0.1)
         with l2:
-            prolec_pse = st.number_input("PROLEC-R: Pseudopalabras (Z)", -4.0, 4.0, -1.8, step=0.1)
+            prolec_pse = st.number_input("PROLEC-R: Pseudopalabras (Z)", -4.0, 4.0, 0.0, step=0.1)
         with l3:
-            prolec_com = st.number_input("PROLEC-R: Comprensión Textos (Z)", -4.0, 4.0, -0.4, step=0.1)
+            prolec_com = st.number_input("PROLEC-R: Comprensión Textos (Z)", -4.0, 4.0, 0.0, step=0.1)
         with l4:
-            wm_calc = st.number_input("Woodcock-Muñoz: Cálculo (CI)", 40, 160, 94)
+            wm_calc = st.number_input("Woodcock-Muñoz: Cálculo (CI)", 40, 160, 100, step=1)
         with l5:
-            wm_prob = st.number_input("Woodcock-Muñoz: Problemas Aplicados (CI)", 40, 160, 96)
+            wm_prob = st.number_input("Woodcock-Muñoz: Problemas Aplicados (CI)", 40, 160, 100, step=1)
 
     with tab_conducta:
-        incluir_brief = st.checkbox("Incluir Cuestionario Ejecutivo Conductual (BRIEF-2)", value=True)
+        incluir_brief = st.checkbox("Incluir Cuestionario Ejecutivo Conductual (BRIEF-2)", value=False)
         b1, b2, b3 = st.columns(3)
         with b1:
-            brief_inh = st.number_input("BRIEF-2: Regulación Conductual (T)", 30, 100, 58)
+            brief_inh = st.number_input("BRIEF-2: Regulación Conductual (T)", 30, 100, 50, step=1)
         with b2:
-            brief_emo = st.number_input("BRIEF-2: Regulación Emocional (T)", 30, 100, 61)
+            brief_emo = st.number_input("BRIEF-2: Regulación Emocional (T)", 30, 100, 50, step=1)
         with b3:
-            brief_cog = st.number_input("BRIEF-2: Regulación Cognitiva (T)", 30, 100, 68)
+            brief_cog = st.number_input("BRIEF-2: Regulación Cognitiva (T)", 30, 100, 50, step=1)
 
     st.divider()
     st.subheader("3. Banco de Recomendaciones Terapéuticas y Adaptaciones Escolares")
@@ -592,7 +580,6 @@ if boton_generar:
             sugerencias=lista_sugerencias_final
         )
 
-        # Guardar en sesión para que no se pierda al tocar el botón de descarga
         st.session_state.grilla_final = grilla_calculada
         st.session_state.informe_texto = texto_ia
         st.session_state.informe_docx = archivo_word_memoria
