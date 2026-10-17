@@ -5,20 +5,20 @@ import tempfile
 import os
 
 # =====================================================================
-# 1. CONFIGURACIÓN DE PÁGINA Y BASE DE CONOCIMIENTO DURA (MEMORIA)
+# 1. CONFIGURACIÓN DE PÁGINA Y BASE DE CONOCIMIENTO CLÍNICA
 # =====================================================================
 st.set_page_config(
-    page_title="Generador Clínico FLENI — Lic. Carla D'Ovidio",
+    page_title="Generador Profesional de Informes Clínicos",
     page_icon="🧠",
     layout="wide"
 )
 
-# Textos literales en cursiva extraídos de los ~114 informes de la carpeta Memoria
-INTRODUCCIONES_LITERAL = {
+# Introducciones teóricas en cursiva (Base de Conocimiento Clínica)
+INTRODUCCIONES_DOMINIOS = {
     "intelectual": (
         "*La evaluación del funcionamiento intelectual mediante la Escala de Inteligencia de Wechsler "
         "(WISC-V / WPPSI-IV / WAIS-IV) permite obtener una estimación de la capacidad cognitiva general "
-        "del niño/adolescente, así como explorar su desempeño en dominios específicos que subyacen al "
+        "del paciente, así como explorar su desempeño en dominios específicos que subyacen al "
         "aprendizaje y la resolución de problemas.*"
     ),
     "memoria": (
@@ -37,7 +37,7 @@ INTRODUCCIONES_LITERAL = {
         "capacidad para mantener la atención en una misma actividad durante un prolongado periodo de "
         "tiempo. La atención dividida es la capacidad de realizar la selección de más de una información "
         "a la vez o de más de un proceso o esquema de acción simultáneamente. El normal funcionamiento "
-        "de estos aspectos va a permitir al niño ejecutar y mantener una conducta dirigida hacia una "
+        "de estos aspectos va a permitir ejecutar y mantener una conducta dirigida hacia una "
         "meta frente a eventuales distractores.*"
     ),
     "ejecutivas": (
@@ -59,14 +59,33 @@ INTRODUCCIONES_LITERAL = {
     )
 }
 
+# Banco Maestro de Sugerencias y Recomendaciones Clínicas y Escolares
+BANCO_SUGERENCIAS = {
+    "terapeuticas": {
+        "Devolución médica": "Compartir el presente informe con el médico derivante/tratante a fin de evaluar las conductas terapéuticas a seguir.",
+        "Tratamiento Psicopedagógico": "Iniciar/continuar tratamiento psicopedagógico con orientación neurocognitiva, orientado a estimular los procesos atencionales, funciones ejecutivas (planificación, organización, monitoreo y memoria de trabajo) y estrategias de aprendizaje.",
+        "Psicoterapia Cognitivo-Conductual (TCC) y Orientación a Padres": "Iniciar/continuar espacio de tratamiento psicológico con orientación cognitivo-conductual (TCC) junto con entrevistas periódicas de orientación a padres, para brindar herramientas de autorregulación emocional, tolerancia a la frustración, control de impulsos y organización de rutinas en el hogar.",
+        "Terapia Ocupacional (Integración Sensorial)": "Realizar evaluación/tratamiento de Terapia Ocupacional con enfoque en Integración Sensorial y praxias visomotoras para abordar la regulación motora, la postura y la grafomotricidad.",
+        "Neurolingüística / Fonoaudiología": "Realizar interconsulta con el área de Neurolingüística / Fonoaudiología para profundizar la evaluación y el abordaje de los aspectos fonológicos, comprensivos y expresivos del lenguaje.",
+        "Maestra de Apoyo a la Inclusión (MAI)": "Evaluar la incorporación de dispositivo de apoyo a la inclusión escolar para acompañar la organización de la tarea en el aula y mediar en las adaptaciones pedagógicas.",
+        "Control evolutivo / Reevaluación": "Realizar una reevaluación neuropsicológica/psicopedagógica de control en el plazo de 12 a 18 meses para monitorear su evolución."
+    },
+    "escolares": {
+        "Ubicación y control de distractores": "Ubicar al alumno/a en los primeros bancos, cerca del docente y lejos de estímulos distractores (ventanas, puertas o zonas de alto tránsito), manteniendo su escritorio despejado únicamente con los materiales necesarios para la actividad en curso.",
+        "Segmentación de consignas": "Brindar consignas breves, claras y secuenciadas de a un paso por vez. Asegurar el contacto visual al darle una indicación y verificar la comprensión pidiéndole que explique con sus propias palabras lo que debe realizar.",
+        "Gestión del tiempo y fragmentación de tareas": "Fragmentar las tareas extensas o evaluaciones en bloques más cortos, otorgando tiempo adicional para su resolución y priorizando la calidad conceptual por sobre la cantidad de ejercicios mecánicos repetitivos.",
+        "Apoyos visuales y funciones ejecutivas": "Implementar apoyos visuales, agendas anticipatorias, uso de calendarios a la vista y listas de chequeo (checklists) para la organización de materiales, entregas y armado de la mochila.",
+        "Pausas activas y regulación motora": "Permitir breves pausas activas programadas y funcionales dentro del ámbito escolar (ej. borrar el pizarrón, repartir material o llevar un recado) cuando se observe fatiga cognitiva o inquietud motora.",
+        "Adaptaciones en Lectoescritura": "Priorizar la evaluación oral o el uso de formatos estructurados (opción múltiple, unir con flechas, completar palabras clave) para evitar que la fatiga lectora o grafomotora penalice la demostración de conocimientos. No exponer a la lectura en voz alta frente al grupo sin preparación previa.",
+        "Adaptaciones en Matemática y Cálculo": "Permitir el uso de apoyos concretos, tabla pitagórica, grillas numéricas o calculadora en resoluciones complejas, a fin de no penalizar el razonamiento lógico-matemático por fallas en la memoria operativa o en la automatización del cálculo.",
+        "Refuerzo positivo y motivación": "Reforzar positivamente sus logros y el esfuerzo sostenido durante el proceso de trabajo, evitando la sobrecorrección punitiva frente al error para preservar su autoestima académica."
+    }
+}
+
 # =====================================================================
-# 2. FUNCIONES DETERMINÍSTICAS (BAREMOS, ESCALAS Z Y HUECOS CONOCIDOS)
+# 2. FUNCIONES DE CONVERSIÓN PSICOMÉTRICA A PUNTAJE Z
 # =====================================================================
 def calcular_z_y_rango(valor: float, tipo_escala: str):
-    """
-    Convierte puntajes de manera exacta a puntaje Z y asigna el Rango Clínico
-    institucional de la Lic. Carla D'Ovidio.
-    """
     if tipo_escala == "CI / Estándar (M=100, DE=15)":
         z = (valor - 100.0) / 15.0
     elif tipo_escala == "Escalar (M=10, DE=3)":
@@ -76,7 +95,7 @@ def calcular_z_y_rango(valor: float, tipo_escala: str):
     elif tipo_escala == "T Inverso - Mayor es peor/error (M=50, DE=10)":
         z = (50.0 - valor) / 10.0
     else:
-        z = valor  # Ya ingresado en Z
+        z = valor
 
     z = round(z, 2)
     if z <= -2.33:
@@ -90,95 +109,76 @@ def calcular_z_y_rango(valor: float, tipo_escala: str):
     elif z >= 2.33:
         rango = "Superior"
     else:
-        # Zona intermedia (-1.32 a -1.01 o +1.01 a +1.32)
         rango = "Normal (Tendencia baja)" if z < 0 else "Normal (Tendencia alta)"
 
     return z, rango
 
 
-def verificar_huecos_baremos(edad_anios: int, sexo: str, pruebas_seleccionadas: list):
-    """
-    Detecta los huecos conocidos del '00 - Índice de la base (Memoria)'
-    en las fotos de tablas y devuelve alertas preventivas.
-    """
-    alertas = []
-    if "TOMAL" in pruebas_seleccionadas and edad_anios in [5, 6, 9, 13, 16, 18, 19]:
-        alertas.append(f"⚠️ **TOMAL ({edad_anios} años):** No hay fotos de tablas en la base para esta edad. Verificar PE directo del manual PDF.")
-    if "WRAML" in pruebas_seleccionadas and edad_anios >= 14 and edad_anios != 15:
-        alertas.append(f"⚠️ **WRAML ({edad_anios} años):** Sin cobertura en fotos desde los 14 años (salvo 15-0). Verificar manual PDF.")
-    if "NEPSY-II" in pruebas_seleccionadas and 13 <= edad_anios <= 16:
-        alertas.append(f"⚠️ **NEPSY-II ({edad_anios} años):** Faltan fotos de la tabla A4 entre 13 y 16 años. Usar manual PDF.")
-    if "BRIEF" in pruebas_seleccionadas and sexo == "Femenino":
-        alertas.append("⚠️ **BRIEF (Niñas):** Faltan fotos de tablas de padres para niñas en la carpeta de fotos. Usar software o manual.")
-    if "Figura Compleja de Rey" in pruebas_seleccionadas and edad_anios not in [13, 15, 17]:
-        alertas.append(f"⚠️ **Figura de Rey - Meyers ({edad_anios} años):** En fotos solo están 13, 15 y 17 años.")
-    if any(p in pruebas_seleccionadas for p in ["WISC-V", "WPPSI-IV"]):
-        alertas.append("ℹ️ **Wechsler:** Recordá no usar las fotos de tablas (son WISC-IV/WPPSI-III); usar manuales WISC-V / WPPSI-IV.")
-    return alertas
-
-
 # =====================================================================
-# 3. PROMPT MAESTRO DEL SISTEMA (REGLAS ESTRICTAS + RAZONAMIENTO GEMINI)
+# 3. PROMPT MAESTRO DEL SISTEMA (HÍBRIDO: BASE DE CONOCIMIENTO + GEMINI)
 # =====================================================================
 def construir_system_prompt():
     return f"""
-Actuás como el Motor Senior de Redacción Clínica Neuropsicológica y Psicopedagógica de FLENI, redactando informes con el estilo exacto de la Lic. Carla D'Ovidio (M.N. 55.767).
+Actuás como un Motor Experto de Redacción Clínica Neuropsicológica y Psicopedagógica.
+Tu objetivo es redactar informes clínicos impecables, formales, en tercera persona y listos para entregar, combinando reglas psicométricas estrictas con tu capacidad de análisis clínico para interpretar matices, cruzar datos conductuales con puntajes y explicar disociaciones.
 
-Tu arquitectura es HÍBRIDA:
-1. OBEDECÉS ESTRICTAMENTE las plantillas, introducciones teóricas en cursiva, escalas normativas Z, cláusulas legales y estructura institucional provistas a continuación (Conocimiento duro de la carpeta "Memoria").
-2. APLICÁS TODA TU INTELIGENCIA CLÍNICA Y FLEXIBILIDAD ANALÍTICA para cruzar los datos cuantitativos con la observación conductual, explicar disociaciones intra-perfil (ej. potencial conceptual conservado con penalización por velocidad o memoria operativa; o falla en evocación libre que mejora en reconocimiento), y redactar un informe cohesivo, cálido y riguroso en tercera persona.
+PROHIBICIÓN ESTRICTA DE PRIVACIDAD:
+- NUNCA menciones nombres de clínicas, hospitales ni nombres de profesionales que no sean los que el usuario ingresó explícitamente en los datos del caso actual.
 
 ---
-### A. ESCALA NORMATIVA UNIFICADA Y GRILLA Z (-3 a +3)
-Clasificación obligatoria:
+### 1. ESCALA NORMATIVA UNIFICADA Y GRILLA Z (-3 a +3)
+Clasificación obligatoria para la tabla cuantitativa y la redacción:
 - **Déficit**: Z <= -2.33 | PE: 1 a 3 | CI: <= 65 | T directo: <= 27 | T inverso (CPT/Nesplora/BRIEF): >= 73 | Pc < 1
 - **Dificultad**: Z de -2.00 a -1.33 | PE: 4 a 6 | CI: 70 a 80 | T directo: 30 a 37 | T inverso: 63 a 70 | Pc 2 a 9
 - **Normal**: Z de -1.00 a +1.00 | PE: 7 a 13 | CI: 85 a 115 | T: 40 a 60 | Pc 16 a 84
 - **Normal Alto**: Z de +1.33 a +2.00 | PE: 14 a 16 | CI: 120 a 130 | T directo: 63 a 70 | T inverso: 30 a 37 | Pc 91 a 98
 - **Superior**: Z >= +2.33 | PE: 17 a 19 | CI: >= 135 | T directo: >= 73 | T inverso: <= 27 | Pc > 99
 
-En el cuerpo del análisis cualitativo, destacá siempre en **negrita** los calificadores de rendimiento (**adecuado**, **acorde a lo esperado para su edad**, **dificultades**, **por debajo de lo esperado**, **descenso**, **déficit**, **rango promedio**, **rango promedio alto**, **superior**).
+En el cuerpo del análisis cualitativo, destacá siempre en **negrita** los calificadores de rendimiento (**adecuado**, **acorde a lo esperado para su edad**, **dentro de los límites esperados**, **dificultades**, **por debajo de lo esperado**, **descenso**, **déficit**, **rango promedio**, **rango promedio alto**, **superior**).
 
 ---
-### B. INTRODUCCIONES TEÓRICAS EN CURSIVA (TEXTO LITERAL OBLIGATORIO)
-Al comenzar cada dominio en la sección "Análisis de los Resultados", debés insertar textualmente el párrafo en cursiva que corresponda antes de analizar al paciente:
+### 2. INTRODUCCIONES TEÓRICAS EN CURSIVA (TEXTO LITERAL OBLIGATORIO)
+Al comenzar cada dominio evaluado en la sección de análisis cualitativo, insertá textualmente el párrafo introductorio en cursiva correspondiente antes de desarrollar los resultados del paciente:
 
-- **Funcionamiento Intelectual:** {INTRODUCCIONES_LITERAL["intelectual"]}
-- **Memoria y Aprendizaje:** {INTRODUCCIONES_LITERAL["memoria"]}
-- **Alerta y Atención:** {INTRODUCCIONES_LITERAL["atencion"]}
-- **Funciones Ejecutivas:** {INTRODUCCIONES_LITERAL["ejecutivas"]}
-- **Procesamiento Visomotor:** {INTRODUCCIONES_LITERAL["visomotor"]}
-- **Lenguaje:** {INTRODUCCIONES_LITERAL["lenguaje"]}
+- **Funcionamiento Intelectual:** {INTRODUCCIONES_DOMINIOS["intelectual"]}
+- **Memoria y Aprendizaje:** {INTRODUCCIONES_DOMINIOS["memoria"]}
+- **Alerta y Atención:** {INTRODUCCIONES_DOMINIOS["atencion"]}
+- **Funciones Ejecutivas:** {INTRODUCCIONES_DOMINIOS["ejecutivas"]}
+- **Procesamiento Visomotor:** {INTRODUCCIONES_DOMINIOS["visomotor"]}
+- **Lenguaje:** {INTRODUCCIONES_DOMINIOS["lenguaje"]}
 
 ---
-### C. REGLAS ESPECÍFICAS POR MODELO Y PRUEBA
-1. **Variantes de Estructura:**
-   - **Desempeño Cognitivo (solo Wechsler):** Membrete FLENI (Montañeses 2325), Tabla de filiación, Motivo de consulta, Métodos de evaluación y procedimientos, Observación de la conducta, Grilla cuantitativa Z, Funcionamiento Intelectual, Conclusiones y Recomendaciones.
-   - **Neuropsicológica Completa:** Igual al anterior pero desarrollando todos los dominios evaluados (Funcionamiento Intelectual, Memoria y Aprendizaje, Alerta y Atención, Funciones Ejecutivas, Visomotor, Lenguaje) y Cuestionarios si los hay.
-   - **Psicopedagógica Infantil:** Membrete FLENI (Olazábal 1574 / Montañeses 2325), usa el título **"Técnicas implementadas"** (en lugar de Métodos de evaluación) y estructura los resultados en: **Perfil psicopedagógico, Cálculo, Lectura (PROLEC), Escritura, Ortografía y Lenguaje**.
-   - **Combinado:** Integra los dominios neuropsicológicos seguidos de los bloques psicopedagógicos y cuestionarios.
-2. **Reglas de Oro de las Pruebas:**
-   - **Wechsler (WISC-V / WPPSI-IV / WAIS-IV):** Si hay dispersión significativa entre índices (especialmente descensos en IMT o IVP), interpretá el **ICG (Índice de Capacidad General)** como el indicador más fiel de su capacidad intelectual. Si se informan índices secundarios (IRC, IMTA), dedicales un párrafo específico.
-   - **Woodcock-Muñoz:** Informar Puntaje Bruto y Edad Equivalente. Incluir SIEMPRE la cláusula literal: *"Nota: La Batería Woodcock-Muñoz no se encuentra estandarizada para nuestra población, por lo que sus valores deben ser considerados como orientativos."*
-   - **CPT-II y Nesplora Aula:** En CPT-II mencionar siempre el porcentaje del *Índice de Confianza Clínico*. En Nesplora Aula analizar el desempeño con vs. sin distractores, canal auditivo vs. visual, y actividad motora.
-   - **NALPA / EPL / Woodcock / Ortografía Feldman:** Cuando el usuario provea ejemplos literales de lo que escribió el niño o de errores en cuentas (ej. "4-1=5"), incluí esos ejemplos literales entre comillas dentro del párrafo clínico.
-3. **Regla Médico-Legal en Conclusiones:**
-   - NUNCA sentenciar un diagnóstico médico cerrado en neuropsicología. Cerrar SIEMPRE la sección de Conclusiones con la fórmula de la Lic. D'Ovidio:
-     *"En síntesis, estos indicadores caracterizan a [Nombre] con un perfil compatible con [describir perfil: ej. un déficit atencional / una debilidad ejecutiva / dificultades específicas del aprendizaje]. El diagnóstico definitivo quedará a cargo del médico tratante a partir de la integración clínica de los presentes hallazgos."*
-4. **Cierre y Firma:**
-   - Dividir recomendaciones en **Recomendaciones generales/terapéuticas** y **Recomendaciones para la escuela** (adaptaciones de acceso, ubicación, segmentación de consignas, tiempos).
-   - Nunca inventar datos no provistos: si falta un puntaje o dato, dejar `[Completar]`.
-   - Firmar siempre como: **Lic. Carla D'Ovidio — Lic. en Psicología y Psicopedagogía — M.N. 55.767 — Servicio de Psiquiatría Infanto Juvenil (FLENI)**.
+### 3. ESTRUCTURA Y REGLAS CLÍNICAS POR PRUEBA
+1. **Estructura según el Modelo elegido:**
+   - **Evaluación Neuropsicológica (Versión Desempeño Cognitivo):** Datos de filiación, Motivo de consulta, Métodos de evaluación y procedimientos, Observación de la conducta, Tabla/Grilla cuantitativa Z, Análisis de Funcionamiento Intelectual, Conclusiones y Recomendaciones (Generales/Terapéuticas y Para la escuela).
+   - **Evaluación Neuropsicológica Completa:** Igual al anterior pero desarrollando todos los dominios administrados (Funcionamiento Intelectual, Memoria y Aprendizaje, Alerta y Atención, Funciones Ejecutivas, Visomotor, Lenguaje) y Cuestionarios si aplican.
+   - **Evaluación Psicopedagógica:** Usa el subtítulo **"Técnicas implementadas"** y organiza el análisis en: **Perfil psicopedagógico, Cálculo, Lectura (PROLEC), Escritura, Ortografía y Lenguaje**.
+   - **Combinado:** Integra los dominios neuropsicológicos seguidos de los apartados psicopedagógicos y cuestionarios.
+2. **Criterios de Interpretación de Baterías:**
+   - **Wechsler (WISC-V / WPPSI-IV / WAIS-IV):** Analizar CIT e índices primarios (ICV, IVE, IRF, IMT, IVP). Si existe marcada dispersión inter-índices (ej. descenso en IMT o IVP), informar e interpretar el **ICG (Índice de Capacidad General)** como medida más representativa de su potencial intelectual. Si hay índices secundarios (IRC, IMTA), desarrollarlos en párrafos propios.
+   - **Memoria (TOMAL, WRAML, RAVLT, Rey):** Contrastar memoria verbal (narrativa vs. lista de palabras, curva de aprendizaje, retención diferida) y memoria visual (abstracta y reproducción/reconocimiento de Figura de Rey).
+   - **Atención y FFEE (CPT-II, Nesplora Aula, NEPSY-II, Stroop, TMT A y B, WCST):** En CPT-II consignar siempre el *Índice de Confianza Clínico (%)*. En Nesplora Aula detallar rendimiento con/sin distractores, canal visual vs. auditivo y actividad motora. En TMT, Stroop y WCST analizar flexibilidad cognitiva, atención dividida, velocidad y control inhibitorio.
+   - **Pruebas Psicopedagógicas (Woodcock-Muñoz, PROLEC-R/SE-R, TEMA-3, TOMA-3, NALPA, EPL, Ortografía Feldman, Dictado):**
+     - Si se administra **Woodcock-Muñoz**, informar Puntaje Bruto y Edad Equivalente, e incluir SIEMPRE esta nota literal: *"Nota: La Batería Woodcock-Muñoz no se encuentra estandarizada para nuestra población, por lo que sus valores deben ser considerados como orientativos."*
+     - Incluir de forma literal entre comillas los ejemplos de escritura (NALPA/dictado) o errores de cálculo provistos por el profesional.
+3. **Conclusiones y Cierre Médico-Legal:**
+   - Integrar fortalezas y debilidades del perfil.
+   - Cerrar las conclusiones con la siguiente fórmula profesional: *"En síntesis, estos indicadores caracterizan a [Nombre] con un perfil compatible con [describir perfil]. El diagnóstico definitivo quedará a cargo del médico tratante a partir de la integración clínica de los presentes hallazgos."*
+4. **Sección Final de Recomendaciones (Obligatoria y Detallada):**
+   - Dividir siempre en dos bloques claros con viñetas bien redactadas:
+     1) **Recomendaciones terapéuticas y generales**
+     2) **Recomendaciones para la escuela (Adaptaciones de acceso y contexto)**
+   - Si falta algún dato puntual del paciente, colocar `[Completar]`.
 """
 
 
 # =====================================================================
-# 4. INTERFAZ DE USUARIO (STREAMLIT)
+# 4. INTERFAZ DE USUARIO EN UNA SOLA PÁGINA (SIN SOLAPAS)
 # =====================================================================
-st.title("🧠 Generador de Informes Clínicos — FLENI")
-st.caption("Sistema Híbrido: Base de Conocimiento 'Memoria' (Lic. Carla D'Ovidio) + Motor Analítico Gemini")
+st.title("🧠 Generador Profesional de Informes Clínicos")
+st.caption("Evaluación Neuropsicológica, Desempeño Cognitivo y Psicopedagógica")
 
-# Gestión de API Key (lee automáticamente de st.secrets si está configurado en Streamlit Cloud)
+# Panel lateral para configuración técnica y calculadora rápida
 api_key = st.secrets.get("GEMINI_API_KEY", "") if "GEMINI_API_KEY" in st.secrets else ""
 with st.sidebar:
     st.header("⚙️ Configuración")
@@ -187,16 +187,15 @@ with st.sidebar:
     modelo_gemini = st.selectbox(
         "Modelo de IA",
         ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-1.5-pro"],
-        index=0,
-        help="gemini-2.5-pro es ideal para razonamiento clínico profundo y redacción extensa."
+        index=0
     )
-    temperatura = st.slider("Creatividad / Flexibilidad de redacción", 0.0, 1.0, 0.25, 0.05)
+    temperatura = st.slider("Flexibilidad de redacción", 0.0, 1.0, 0.25, 0.05)
 
     st.divider()
     st.subheader("🧮 Calculadora Rápida a Z")
-    val_calc = st.number_input("Puntaje obtenido", value=10.0, step=1.0)
+    val_calc = st.number_input("Puntaje", value=10.0, step=1.0)
     esc_calc = st.selectbox(
-        "Escala de origen",
+        "Escala",
         [
             "Escalar (M=10, DE=3)",
             "CI / Estándar (M=100, DE=15)",
@@ -205,20 +204,18 @@ with st.sidebar:
         ]
     )
     z_res, rango_res = calcular_z_y_rango(val_calc, esc_calc)
-    st.metric(label="Puntaje Z y Rango FLENI", value=f"Z = {z_res:+.2f}", delta=rango_res)
+    st.metric(label="Equivalencia Z y Rango", value=f"Z = {z_res:+.2f}", delta=rango_res)
 
-# Pestañas principales reflejando la Ficha de Carga y Planilla de Puntuaciones
-tab_ficha, tab_puntajes, tab_especificos, tab_cierre = st.tabs([
-    "1️⃣ Filiación, Modelo y Conducta",
-    "2️⃣ Planilla de Puntuaciones y PDFs",
-    "3️⃣ Detalles por Bloque (NP / PSP / Cuestionarios)",
-    "4️⃣ Impresión Clínica y Generación"
-])
+# ---------------------------------------------------------------------
+# SECCIÓN 1: MODELO DE INFORME Y PRUEBAS ADMINISTRADAS
+# (Todo arranca vacío, sin ninguna sugerencia preseleccionada)
+# ---------------------------------------------------------------------
+st.header("1. Tipo de Informe y Baterías Administradas")
 
-with tab_ficha:
-    st.subheader("1. Selección de Modelo e Identificación")
+col_mod1, col_mod2 = st.columns(2)
+with col_mod1:
     modelos_seleccionados = st.multiselect(
-        "¿Qué modelo(s) de informe corresponde armar? (Podés combinar)",
+        "Seleccioná el modelo de informe (podés combinar más de uno):",
         [
             "Evaluación Neuropsicológica Completa",
             "Evaluación Neuropsicológica (Versión Desempeño Cognitivo - Wechsler)",
@@ -227,56 +224,13 @@ with tab_ficha:
             "Conducta Adaptativa (Vineland)",
             "DIVA-5 (Adultos)"
         ],
-        default=["Evaluación Neuropsicológica Completa"]
+        default=[],
+        placeholder="Elegí el modelo de informe..."
     )
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        nombre = st.text_input("Apellido y Nombre", placeholder="Ej: Pérez, Agustín")
-        hc = st.text_input("HC N°", placeholder="Ej: 458921")
-        sexo = st.selectbox("Sexo biológico (para alerta de baremos)", ["Masculino", "Femenino"])
-    with c2:
-        edad_texto = st.text_input("Edad exacta (años y meses)", placeholder="Ej: 9 años, 4 meses")
-        edad_num = st.number_input("Edad en años cumplidos (para chequear baremos)", min_value=2, max_value=90, value=9)
-        fecha_nac = st.text_input("Fecha de nacimiento", placeholder="DD/MM/AAAA")
-    with c3:
-        fecha_eval = st.text_input("Fecha de evaluación", value="Octubre 2026")
-        escolaridad = st.text_input("Escolaridad (Nivel y Grado/Año)", placeholder="Ej: 4° Grado - Nivel Primario")
-        preferencia = st.selectbox("Preferencia manual", ["Diestra", "Zurda", "Ambidiestra / En definición"])
-    with c4:
-        nacionalidad = st.text_input("Nacionalidad", value="Argentina")
-        medico = st.text_input("Médico Solicitante", placeholder="Dr./Dra. ...")
-        acompanante = st.text_input("Acompañante", placeholder="Madre / Padre / Ambos")
-
-    st.subheader("2. Motivo de Consulta y Antecedentes")
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        quien_deriva = st.text_input("¿Quién deriva y qué preocupa?", placeholder="Derivado por neurología / colegio por desatención...")
-        tratamientos = st.text_input("Diagnósticos y tratamientos actuales", placeholder="Ej: Psicopedagogía semanal desde 2025...")
-    with col_m2:
-        eval_previas = st.text_area("Evaluaciones anteriores y medicación (si aplica)", height=100)
-
-    st.subheader("3. Observación de la Conducta (Checkboxes Ficha de Carga)")
-    cb1, cb2, cb3 = st.columns(3)
-    with cb1:
-        obs_vinculo = st.selectbox("Contacto y vínculo", ["Adecuado", "Reticente al inicio, luego adecuado", "Otro (detallar abajo)"])
-        obs_predisp = st.selectbox("Predisposición", ["Buena", "Variable", "Intenta dirigir la situación"])
-        obs_consignas = st.selectbox("Comprensión de consignas", ["Comprende adecuadamente", "Requiere repetición y segmentación"])
-        obs_desatencion = st.selectbox("Desatención", ["No (Sostiene el foco)", "Tiempos atencionales breves", "Se dispersa frente a estímulos"])
-    with cb2:
-        obs_motora = st.selectbox("Inquietud motora", ["No (Estable en su silla)", "Movedizo en la silla", "Le cuesta trabajar en silencio"])
-        obs_impulsividad = st.selectbox("Impulsividad", ["No (Reflexivo)", "Responde apresurado, errores por descuido"])
-        obs_frustracion = st.selectbox("Tolerancia a la frustración", ["Adecuada", "Baja, con conductas de evitación", "Enojo / Fastidio ante la dificultad"])
-    with cb3:
-        obs_ansiedad = st.selectbox("Ansiedad frente al error", ["No", "Sí, demora respuestas en pruebas con tiempo"])
-        obs_ritmo = st.selectbox("Ritmo de trabajo y fatiga", ["Adecuado y sostenido", "Lento", "Se fatiga rápido hacia el final"])
-        obs_lenguaje = st.selectbox("Lenguaje expresivo espontáneo", ["Adecuado", "Dificultades fonológicas / articulatorias", "Escaso / Monosilábico"])
-    obs_extra = st.text_area("Otras observaciones conductuales cualitativas", height=70)
-
-with tab_puntajes:
-    st.subheader("Pruebas Administradas y Detección de Huecos de Baremos")
+with col_mod2:
     pruebas_usadas = st.multiselect(
-        "Seleccioná las baterías administradas:",
+        "Seleccioná las pruebas y test administrados:",
         [
             "WISC-V", "WPPSI-IV", "WAIS-IV", "NEPSY-II", "TOMAL", "WRAML",
             "Stroop", "Trail Making Test (TMT)", "CPT-II", "Nesplora Aula",
@@ -285,152 +239,232 @@ with tab_puntajes:
             "TEMA-3", "Dictado de oraciones", "EPL", "Escala Durand", "WCST",
             "RAVLT", "Vineland", "DIVA-5"
         ],
-        default=["WISC-V", "TOMAL", "WRAML", "CPT-II", "NEPSY-II", "Stroop", "Trail Making Test (TMT)"]
+        default=[],
+        placeholder="Elegí las pruebas administradas..."
     )
 
-    # Mostrar alertas automáticas de la carpeta Memoria
-    alertas_baremos = verificar_huecos_baremos(edad_num, sexo, pruebas_usadas)
-    if alertas_baremos:
-        for alerta in alertas_baremos:
-            st.warning(alerta)
+st.divider()
 
-    st.markdown("#### 📊 Grilla Interactiva de Puntuaciones (Calcula Z y Rango automáticamente)")
-    st.caption("Podés cargar los puntajes acá o pegar directamente tu tabla/planilla en el cuadro de texto de abajo.")
+# ---------------------------------------------------------------------
+# SECCIÓN 2: DATOS DE FILIACIÓN Y PROFESIONAL
+# ---------------------------------------------------------------------
+st.header("2. Datos del Paciente y del Profesional")
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    nombre = st.text_input("Apellido y Nombre del Paciente")
+    hc = st.text_input("DNI / HC N°")
+    fecha_nac = st.text_input("Fecha de nacimiento (DD/MM/AAAA)")
+with c2:
+    edad_texto = st.text_input("Edad (años y meses)")
+    escolaridad = st.text_input("Escolaridad (Nivel y Grado/Año)")
+    preferencia = st.selectbox("Preferencia manual", ["", "Diestra", "Zurda", "Ambidiestra / En definición"])
+with c3:
+    fecha_eval = st.text_input("Fecha de evaluación")
+    nacionalidad = st.text_input("Nacionalidad")
+    acompanante = st.text_input("Acompañante")
+with c4:
+    medico = st.text_input("Médico / Institución Solicitante")
+    profesional_nombre = st.text_input("Profesional Evaluador/a (para la firma)")
+    profesional_matricula = st.text_input("Título y Matrícula Profesional")
 
-    df_inicial = pd.DataFrame([
-        {"Dominio / Prueba": "WISC-V - CIT", "Puntaje": 100.0, "Tipo de Escala": "CI / Estándar (M=100, DE=15)", "Observación": ""},
-        {"Dominio / Prueba": "WISC-V - Comprensión Verbal (ICV)", "Puntaje": 105.0, "Tipo de Escala": "CI / Estándar (M=100, DE=15)", "Observación": ""},
-        {"Dominio / Prueba": "TOMAL - Recuerdo Selectivo Palabras", "Puntaje": 10.0, "Tipo de Escala": "Escalar (M=10, DE=3)", "Observación": ""},
-    ])
+st.divider()
 
-    df_editado = st.data_editor(
-        df_inicial,
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "Tipo de Escala": st.column_config.SelectboxColumn(
-                "Tipo de Escala",
-                options=[
-                    "CI / Estándar (M=100, DE=15)",
-                    "Escalar (M=10, DE=3)",
-                    "T Directo - Mayor es mejor (M=50, DE=10)",
-                    "T Inverso - Mayor es peor/error (M=50, DE=10)",
-                    "Puntaje Z directo"
-                ],
-                required=True
-            )
-        }
-    )
+# ---------------------------------------------------------------------
+# SECCIÓN 3: MOTIVO DE CONSULTA Y OBSERVACIÓN DE CONDUCTA
+# ---------------------------------------------------------------------
+st.header("3. Motivo de Consulta y Observación de la Conducta")
+col_m1, col_m2 = st.columns(2)
+with col_m1:
+    quien_deriva = st.text_area("¿Quién deriva y qué preocupa? (Motivo de consulta)", height=85)
+with col_m2:
+    antecedentes = st.text_area("Diagnósticos, tratamientos actuales y evaluaciones previas", height=85)
 
-    # Procesar tabla con Python para darle a Gemini los Z exactos sin errores de cálculo
-    filas_procesadas = []
-    for _, row in df_editado.iterrows():
-        if row["Dominio / Prueba"] and pd.notnull(row["Puntaje"]):
-            z_val, r_val = calcular_z_y_rango(float(row["Puntaje"]), row["Tipo de Escala"])
-            filas_procesadas.append({
-                "Dominio / Prueba": row["Dominio / Prueba"],
-                "Puntaje Original": row["Puntaje"],
-                "Escala": row["Tipo de Escala"],
-                "Puntaje Z Calculado": f"{z_val:+.2f}",
-                "Rango Clínico FLENI": r_val,
-                "Notas": row.get("Observación", "")
-            })
-    df_procesado = pd.DataFrame(filas_procesadas)
-    if not df_procesado.empty:
-        st.dataframe(df_procesado, use_container_width=True)
+st.subheader("Indicadores Conductuales Observados")
+cb1, cb2, cb3 = st.columns(3)
+with cb1:
+    obs_vinculo = st.selectbox("Contacto y vínculo", ["", "Adecuado", "Reticente al inicio, luego adecuado", "Otro"])
+    obs_predisp = st.selectbox("Predisposición", ["", "Buena", "Variable", "Intenta dirigir la situación"])
+    obs_consignas = st.selectbox("Comprensión de consignas", ["", "Comprende adecuadamente", "Requiere repetición y segmentación"])
+    obs_desatencion = st.selectbox("Atención durante la evaluación", ["", "Sostiene el foco adecuadamente", "Tiempos atencionales breves", "Se dispersa frente a estímulos"])
+with cb2:
+    obs_motora = st.selectbox("Actividad motora", ["", "Adecuada (Estable en su silla)", "Movedizo en la silla", "Le cuesta trabajar en silencio"])
+    obs_impulsividad = st.selectbox("Estilo de respuesta / Impulsividad", ["", "Reflexivo y organizado", "Responde apresurado, errores por descuido"])
+    obs_frustracion = st.selectbox("Tolerancia a la frustración", ["", "Adecuada", "Baja, con conductas de evitación", "Enojo o fastidio ante la dificultad"])
+with cb3:
+    obs_ansiedad = st.selectbox("Ansiedad frente al error", ["", "No se observa", "Sí, demora respuestas en pruebas con tiempo"])
+    obs_ritmo = st.selectbox("Ritmo de trabajo y fatiga", ["", "Adecuado y sostenido", "Lento", "Se fatiga rápido hacia el final"])
+    obs_lenguaje = st.selectbox("Lenguaje expresivo espontáneo", ["", "Adecuado", "Dificultades fonológicas / articulatorias", "Escaso"])
 
+obs_extra = st.text_area("Observaciones cualitativas adicionales de la conducta", height=65)
+
+st.divider()
+
+# ---------------------------------------------------------------------
+# SECCIÓN 4: CARGA DE PUNTAJES, PLANILLAS Y PDFs
+# ---------------------------------------------------------------------
+st.header("4. Puntuaciones Cuantitativas y Reportes Adjuntos")
+st.caption("Cargá los puntajes en la grilla para que el sistema calcule automáticamente el Puntaje Z y el Rango, o pegá los datos directamente abajo.")
+
+df_vacio = pd.DataFrame(
+    columns=["Dominio / Prueba", "Puntaje", "Tipo de Escala", "Observación"]
+)
+
+df_editado = st.data_editor(
+    df_vacio,
+    num_rows="dynamic",
+    use_container_width=True,
+    column_config={
+        "Dominio / Prueba": st.column_config.TextColumn("Dominio / Prueba / Subtest"),
+        "Puntaje": st.column_config.NumberColumn("Puntaje Obtenido", format="%.2f"),
+        "Tipo de Escala": st.column_config.SelectboxColumn(
+            "Tipo de Escala",
+            options=[
+                "CI / Estándar (M=100, DE=15)",
+                "Escalar (M=10, DE=3)",
+                "T Directo - Mayor es mejor (M=50, DE=10)",
+                "T Inverso - Mayor es peor/error (M=50, DE=10)",
+                "Puntaje Z directo"
+            ]
+        ),
+        "Observación": st.column_config.TextColumn("Notas de la prueba")
+    }
+)
+
+filas_procesadas = []
+for _, row in df_editado.iterrows():
+    if row.get("Dominio / Prueba") and pd.notnull(row.get("Puntaje")) and row.get("Tipo de Escala"):
+        z_val, r_val = calcular_z_y_rango(float(row["Puntaje"]), row["Tipo de Escala"])
+        filas_procesadas.append({
+            "Dominio / Prueba": row["Dominio / Prueba"],
+            "Puntaje": row["Puntaje"],
+            "Escala": row["Tipo de Escala"],
+            "Puntaje Z": f"{z_val:+.2f}",
+            "Rango Clínico": r_val,
+            "Notas": row.get("Observación", "")
+        })
+df_procesado = pd.DataFrame(filas_procesadas)
+if not df_procesado.empty:
+    st.dataframe(df_procesado, use_container_width=True)
+
+col_p1, col_p2 = st.columns(2)
+with col_p1:
     texto_puntajes_libre = st.text_area(
-        "O pegá acá directamente los datos crudos de tu Planilla de Puntuaciones / CSV:",
-        height=140,
-        placeholder="Pegá celdas de Excel/Sheets o notas de puntajes..."
+        "Pegar tabla de puntuaciones o resultados crudos (Excel / Planilla / Notas):",
+        height=130
     )
-
+with col_p2:
     archivos_adjuntos = st.file_uploader(
-        "📎 Adjuntar reportes PDF (CPT-II, Nesplora Aula, Vineland) o CSV de Planilla",
+        "📎 Subir reportes en PDF (CPT-II, Nesplora Aula, Vineland) o CSV",
         type=["pdf", "csv", "txt"],
         accept_multiple_files=True
     )
 
-with tab_especificos:
-    st.subheader("5. Bloques Cualitativos de la Ficha de Carga")
-    col_q1, col_q2 = st.columns(2)
-    with col_q1:
-        st.markdown("**A. Desempeño Cognitivo (Wechsler)**")
-        ic_cit = st.text_input("Intervalo de confianza del CIT (95%) e información de ICG", placeholder="Ej: IC 95% 98-110. Perfil heterogéneo, informar ICG = 108")
-        indices_sec = st.text_input("Índices secundarios calculados (IRC, IMTA, etc.)", placeholder="Ej: IRC = 115 (Promedio Alto), IMTA = 95 (Promedio)")
-        obs_wechsler = st.text_area("Observaciones cualitativas por índice (conteo dactilar, subitización, impulsividad)", height=90)
+st.divider()
 
-        st.markdown("**B. Neuropsicológica Completa**")
-        obs_memoria = st.text_area("Memoria (estrategias en lista, pérdida diferida, intrusiones, RAVLT, Reconocimiento Rey)", height=80)
-        obs_atencion_fe = st.text_area("Atención y FFEE (momento en que decae, CPT índice confianza, Nesplora distractores, WCST categorías/perseveraciones)", height=80)
-        obs_viso_leng = st.text_area("Visomotor y Lenguaje (organización Rey, prensión, fluidez semántica vs fonémica)", height=80)
+# ---------------------------------------------------------------------
+# SECCIÓN 5: DETALLES CUALITATIVOS POR DOMINIO
+# ---------------------------------------------------------------------
+st.header("5. Notas Cualitativas por Dominio y Pruebas")
+col_q1, col_q2 = st.columns(2)
+with col_q1:
+    st.subheader("A. Desempeño Cognitivo y Neuropsicología")
+    obs_wechsler = st.text_area(
+        "Funcionamiento Intelectual (IC 95%, si se informa ICG, índices secundarios IRC/IMTA, estrategias)",
+        height=80
+    )
+    obs_memoria = st.text_area(
+        "Memoria y Aprendizaje (curva de aprendizaje, intrusiones, pérdida diferida, reconocimiento en Rey)",
+        height=80
+    )
+    obs_atencion_fe = st.text_area(
+        "Atención y Funciones Ejecutivas (CPT índice de confianza, Nesplora distractores, WCST, Stroop, TMT)",
+        height=80
+    )
+    obs_viso_leng = st.text_area(
+        "Visomotor y Lenguaje (estrategia de copia en Rey, prensión, fluidez semántica vs. fonológica)",
+        height=80
+    )
 
-    with col_q2:
-        st.markdown("**C. Bloque Psicopedagógico (si aplica)**")
-        alfabetizado = st.selectbox("¿Está alfabetizado/a?", ["No aplica", "Sí", "No", "En proceso"])
-        tipo_letra = st.text_input("Tipo de letra, prensión y reconocimiento sonoro de letras")
-        nalpa_dictado = st.text_area("Palabras dictadas (NALPA / Dictado) — Escribir en forma LITERAL lo que produjo", height=75)
-        lectura_prolec = st.text_area("Lectura y PROLEC-R (velocidad, tipo de errores, comprensión)", height=75)
-        calculo_woodcock = st.text_area("Matemática (Woodcock-Muñoz ejemplos literales como '4-1=5', TEMA-3 / TOMA-3 logros y dificultades)", height=75)
+with col_q2:
+    st.subheader("B. Psicopedagogía y Cuestionarios")
+    alfabetizado = st.selectbox("Nivel de alfabetización (si aplica)", ["", "Sí", "No", "En proceso"])
+    obs_lectoescritura = st.text_area(
+        "Lectura, Escritura y Ortografía (PROLEC-R, EPL, velocidad/precisión, ejemplos literales de NALPA o dictado)",
+        height=95
+    )
+    obs_matematica = st.text_area(
+        "Cálculo y Matemática (Woodcock-Muñoz ejemplos literales de aciertos/errores, TEMA-3 / TOMA-3)",
+        height=95
+    )
+    cuestionarios_txt = st.text_area(
+        "Cuestionarios y Escalas (SNAP-IV, BRIEF, Durand, Autoestima, Vineland, DIVA-5: informante e ítems)",
+        height=95
+    )
 
-        st.markdown("**D. Cuestionarios, Vineland y DIVA-5 (si aplica)**")
-        cuestionarios_txt = st.text_area(
-            "SNAP-IV / BRIEF / Durand / Autoestima / Vineland / DIVA-5 (Informante e ítems significativos)",
-            height=115
-        )
+st.divider()
 
-with tab_cierre:
-    st.subheader("8. Impresión Clínica y Derivaciones")
+# ---------------------------------------------------------------------
+# SECCIÓN 6: CONCLUSIONES Y SUGERENCIAS FINALES (CLARAS Y DESPLEGADAS)
+# (Todo arranca sin ninguna opción seleccionada)
+# ---------------------------------------------------------------------
+st.header("6. Conclusiones y Sugerencias Finales")
+
+col_s1, col_s2 = st.columns(2)
+with col_s1:
     impresion_destacar = st.text_area(
-        "¿Qué querés que destaque especialmente la conclusión del informe?",
-        placeholder="Ej: Destacar que su potencial intelectual es normal alto pero su rendimiento cae por fatiga atencional e impulsividad..."
+        "Síntesis diagnóstica / Qué querés destacar en las Conclusiones:",
+        height=100,
+        placeholder="Ej: Perfil cognitivo dentro del promedio con vulnerabilidad específica en el sostenimiento atencional y control inhibitorio..."
     )
-    perfil_recom = st.selectbox(
-        "Perfil de recomendaciones",
-        [
-            "Combinado o impulsivo",
-            "Predominantemente inatento",
-            "Dentro de lo esperado con leves vulnerabilidades",
-            "Específico del Aprendizaje (DEA - Lectoescritura / Cálculo)",
-            "Personalizado según notas"
-        ]
+    frecuencia_y_control = st.text_input(
+        "Frecuencia de tratamiento y plazo de reevaluación (opcional)",
+        placeholder="Ej: Frecuencia semanal. Reevaluación en 12 meses."
     )
-    derivaciones = st.multiselect(
-        "Derivaciones y sugerencias terapéuticas a incluir:",
-        [
-            "Psiquiatría o neurología infantil (devolución al médico derivante)",
-            "Tratamiento psicopedagógico con orientación neurocognitiva",
-            "Tratamiento psicológico cognitivo-conductual (TCC) y orientación a padres",
-            "Terapia Ocupacional con enfoque en Integración Sensorial",
-            "Evaluación / Tratamiento Neurolingüístico (Fonoaudiología)",
-            "Maestra de Apoyo a la Inclusión (MAI)"
-        ],
-        default=[
-            "Psiquiatría o neurología infantil (devolución al médico derivante)",
-            "Tratamiento psicopedagógico con orientación neurocognitiva"
-        ]
-    )
-    col_r1, col_r2 = st.columns(2)
-    with col_r1:
-        frecuencia_sug = st.text_input("Frecuencia sugerida de tratamiento", value="Semanal")
-    with col_r2:
-        reevaluacion = st.text_input("Sugerencia de reevaluación en", value="1 año / 18 meses")
-    recom_escuela_casa = st.text_area("Recomendaciones puntuales extra para la escuela o la casa", height=80)
 
-    st.divider()
-    boton_generar = st.button("🚀 Generar Informe Clínico Completo", type="primary", use_container_width=True)
+with col_s2:
+    sug_terapeuticas_sel = st.multiselect(
+        "Sugerencias Terapéuticas y Derivaciones (elegí las que quieras incluir):",
+        options=list(BANCO_SUGERENCIAS["terapeuticas"].keys()),
+        default=[],
+        placeholder="Seleccionar derivaciones y tratamientos..."
+    )
+    sug_escolares_sel = st.multiselect(
+        "Sugerencias y Adaptaciones para la Escuela (elegí las que quieras incluir):",
+        options=list(BANCO_SUGERENCIAS["escolares"].keys()),
+        default=[],
+        placeholder="Seleccionar adaptaciones escolares..."
+    )
+
+recom_personalizadas = st.text_area(
+    "Agregar otras sugerencias personalizadas (para la familia, escuela o terapeutas):",
+    height=75
+)
+
+# Vista previa clara de las sugerencias seleccionadas que se redactarán en el informe
+if sug_terapeuticas_sel or sug_escolares_sel:
+    with st.expander("👁️ Ver texto base de las sugerencias seleccionadas", expanded=True):
+        if sug_terapeuticas_sel:
+            st.markdown("**Recomendaciones Terapéuticas y Generales seleccionadas:**")
+            for item in sug_terapeuticas_sel:
+                st.markdown(f"- **{item}:** {BANCO_SUGERENCIAS['terapeuticas'][item]}")
+        if sug_escolares_sel:
+            st.markdown("**Recomendaciones para la Escuela seleccionadas:**")
+            for item in sug_escolares_sel:
+                st.markdown(f"- **{item}:** {BANCO_SUGERENCIAS['escolares'][item]}")
+
+st.divider()
+boton_generar = st.button("🚀 Generar Informe Clínico Completo", type="primary", use_container_width=True)
 
 # =====================================================================
 # 5. EJECUCIÓN DEL MOTOR HÍBRIDO (PYTHON + GEMINI API)
 # =====================================================================
 if boton_generar:
     if not api_key:
-        st.error("❌ Ingresá tu API Key de Gemini en el panel izquierdo para poder generar el informe.")
+        st.error("Por favor, ingresá tu API Key de Gemini en el menú lateral izquierdo.")
     else:
         genai.configure(api_key=api_key)
-        with st.spinner("Integrando base 'Memoria', calculando grillas Z y redactando informe con el estilo de la Lic. D'Ovidio..."):
+        with st.spinner("Analizando perfil clínico, procesando escalas Z y redactando el informe completo..."):
             try:
-                # 1. Subir PDFs adjuntos (ej. CPT-II / Nesplora) a la File API de Gemini si existen
                 contenido_multimedia = []
                 archivos_temp = []
                 for archivo in archivos_adjuntos:
@@ -443,77 +477,91 @@ if boton_generar:
                         contenido_multimedia.append(uploaded_file)
                     else:
                         texto_archivo = archivo.read().decode("utf-8", errors="ignore")
-                        contenido_multimedia.append(f"\n--- Contenido del archivo adjunto ({archivo.name}) ---\n{texto_archivo}\n")
+                        contenido_multimedia.append(f"\n--- Archivo adjunto ({archivo.name}) ---\n{texto_archivo}\n")
 
-                # 2. Armar el dossier estructurado del paciente
-                tabla_z_markdown = df_procesado.to_markdown(index=False) if not df_procesado.empty else "Sin filas en la tabla interactiva."
+                tabla_z_markdown = df_procesado.to_markdown(index=False) if not df_procesado.empty else "No se ingresaron filas en la grilla interactiva."
+
+                # Armar el detalle explícito de las sugerencias seleccionadas
+                detalle_terapeuticas = "\n".join(
+                    [f"- {k}: {BANCO_SUGERENCIAS['terapeuticas'][k]}" for k in sug_terapeuticas_sel]
+                ) or "Adaptar automáticamente según el perfil clínico descrito."
+
+                detalle_escolares = "\n".join(
+                    [f"- {k}: {BANCO_SUGERENCIAS['escolares'][k]}" for k in sug_escolares_sel]
+                ) or "Incluir pautas escolares acordes a las necesidades detectadas en el perfil."
+
+                firma_profesional = (
+                    f"{profesional_nombre} — {profesional_matricula}"
+                    if profesional_nombre or profesional_matricula
+                    else "[Firma y Sello del Profesional]"
+                )
 
                 prompt_caso = f"""
-Redactá el INFORME CLÍNICO COMPLETO Y DEFINITIVO siguiendo estrictamente las reglas del Sistema (FLENI - Lic. Carla D'Ovidio).
+Redactá el INFORME CLÍNICO COMPLETO Y DEFINITIVO siguiendo la estructura y el estilo profesional del Sistema.
 
-### 1. MODELO(S) REQUERIDO(S):
-{', '.join(modelos_seleccionados)}
+### 1. MODELO(S) DE INFORME A REDACTAR:
+{', '.join(modelos_seleccionados) if modelos_seleccionados else 'Inferir según las pruebas administradas'}
 
 ### 2. DATOS DE FILIACIÓN:
 - Apellido y Nombre: {nombre or '[Completar]'}
-- HC: {hc or '[Completar]'}
-- Edad: {edad_texto or f'{edad_num} años'}
+- DNI / HC: {hc or '[Completar]'}
+- Edad: {edad_texto or '[Completar]'}
 - Fecha de nacimiento: {fecha_nac or '[Completar]'}
-- Fecha de evaluación: {fecha_eval}
+- Fecha de evaluación: {fecha_eval or '[Completar]'}
 - Escolaridad: {escolaridad or '[Completar]'}
-- Nacionalidad: {nacionalidad}
-- Preferencia manual: {preferencia}
-- Médico Solicitante: {medico or '[Completar]'}
-- Acompañante: {acompanante}
+- Nacionalidad: {nacionalidad or '[Completar]'}
+- Preferencia manual: {preferencia or '[Completar]'}
+- Solicitante: {medico or '[Completar]'}
+- Profesional Evaluador: {firma_profesional}
+- Acompañante: {acompanante or 'No especificado'}
 
 ### 3. MOTIVO DE CONSULTA Y ANTECEDENTES:
-- Quién deriva y motivo: {quien_deriva}
-- Diagnósticos y tratamientos actuales: {tratamientos}
-- Evaluaciones previas: {eval_previas}
+- Motivo y derivación: {quien_deriva}
+- Antecedentes y tratamientos: {antecedentes}
 
-### 4. OBSERVACIÓN DE LA CONDUCTA (Convertir en 2-3 párrafos fluidos y formales):
+### 4. OBSERVACIÓN DE LA CONDUCTA:
 - Contacto y vínculo: {obs_vinculo}
 - Predisposición: {obs_predisp}
 - Comprensión de consignas: {obs_consignas}
-- Desatención: {obs_desatencion}
-- Inquietud motora: {obs_motora}
+- Atención observable: {obs_desatencion}
+- Actividad motora: {obs_motora}
 - Impulsividad: {obs_impulsividad}
 - Tolerancia a la frustración: {obs_frustracion}
 - Ansiedad frente al error: {obs_ansiedad}
 - Ritmo de trabajo y fatiga: {obs_ritmo}
 - Lenguaje expresivo: {obs_lenguaje}
-- Observaciones adicionales: {obs_extra}
+- Notas extra de conducta: {obs_extra}
 
-### 5. BATERÍAS ADMINISTRADAS:
-{', '.join(pruebas_usadas)}
+### 5. PRUEBAS Y BATERÍAS ADMINISTRADAS:
+{', '.join(pruebas_usadas) if pruebas_usadas else 'Ver puntuaciones y notas adjuntas'}
 
-### 6. TABLA DE PUNTUACIONES YA PROCESADAS A PUNTAJE Z Y RANGO FLENI:
+### 6. GRILLA DE PUNTUACIONES PROCESADAS (PUNTAJE Z Y RANGO CLÍNICO):
 {tabla_z_markdown}
 
-### 7. DATOS ADICIONALES DE LA PLANILLA DE PUNTUACIONES:
+### 7. DATOS ADICIONALES DE PUNTUACIONES (TEXTO LIBRE / PLANILLA):
 {texto_puntajes_libre}
 
-### 8. NOTAS CUALITATIVAS POR DOMINIO (FICHA DE CARGA):
-- **Wechsler (IC 95% / ICG / Índices secundarios / Cualitativo):** {ic_cit} | {indices_sec} | {obs_wechsler}
+### 8. OBSERVACIONES CUALITATIVAS POR DOMINIO:
+- **Funcionamiento Intelectual (Wechsler):** {obs_wechsler}
 - **Memoria y Aprendizaje:** {obs_memoria}
 - **Atención y Funciones Ejecutivas:** {obs_atencion_fe}
 - **Visomotor y Lenguaje:** {obs_viso_leng}
-- **Psicopedagógico (Alfabetización: {alfabetizado}):**
-  - Letra y prensión: {tipo_letra}
-  - Ejemplos literales dictado/NALPA: {nalpa_dictado}
-  - Lectura / PROLEC: {lectura_prolec}
-  - Matemática / Woodcock-Muñoz / TEMA-3: {calculo_woodcock}
+- **Psicopedagogía (Alfabetización: {alfabetizado}):**
+  - Lectura, Escritura y Ortografía: {obs_lectoescritura}
+  - Cálculo y Matemática: {obs_matematica}
 - **Cuestionarios / Vineland / DIVA-5:** {cuestionarios_txt}
 
-### 9. IMPRESIÓN CLÍNICA Y RECOMENDACIONES SOLICITADAS:
-- Foco a destacar en Conclusiones: {impresion_destacar}
-- Perfil de recomendaciones: {perfil_recom}
-- Derivaciones seleccionadas: {', '.join(derivaciones)}
-- Frecuencia sugerida: {frecuencia_sug} | Reevaluación en: {reevaluacion}
-- Recomendaciones puntuales escuela/casa: {recom_escuela_casa}
+### 9. CONCLUSIONES Y SUGERENCIAS FINALES OBLIGATORIAS:
+- **Síntesis clínica a destacar en Conclusiones:** {impresion_destacar}
+- **Frecuencia y control evolutivo:** {frecuencia_y_control}
+- **Recomendaciones Terapéuticas y Generales a desarrollar:**
+{detalle_terapeuticas}
+- **Recomendaciones y Adaptaciones para la Escuela a desarrollar:**
+{detalle_escolares}
+- **Sugerencias personalizadas adicionales:** {recom_personalizadas}
+- **Firma al pie del informe:** {firma_profesional}
 """
 
-                # 3. Llamada al modelo Gemini con System Instruction + PDFs + Prompt del Caso
                 model = genai.GenerativeModel(
                     model_name=modelo_gemini,
                     system_instruction=construir_system_prompt(),
@@ -523,22 +571,20 @@ Redactá el INFORME CLÍNICO COMPLETO Y DEFINITIVO siguiendo estrictamente las r
                 payload = contenido_multimedia + [prompt_caso]
                 respuesta = model.generate_content(payload)
 
-                # Limpiar archivos temporales
                 for path in archivos_temp:
                     if os.path.exists(path):
                         os.remove(path)
 
-                st.success("✅ Informe generado con éxito.")
-                st.subheader("📄 Vista Previa del Informe Clínico")
+                st.subheader("📄 Informe Clínico Generado")
                 st.markdown(respuesta.text)
 
                 st.download_button(
-                    label="⬇️ Descargar Informe (.md / compatible con Word y Docs)",
+                    label="⬇️ Descargar Informe (.md / compatible con Word y Google Docs)",
                     data=respuesta.text,
-                    file_name=f"Informe_FLENI_{(nombre or 'Paciente').replace(' ', '_')}.md",
+                    file_name=f"Informe_{(nombre or 'Paciente').replace(' ', '_')}.md",
                     mime="text/markdown",
                     use_container_width=True
                 )
 
             except Exception as e:
-                st.error(f"Error durante la generación: {e}")
+                st.error(f"Error al generar el informe: {e}")
