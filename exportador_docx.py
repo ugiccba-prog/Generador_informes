@@ -14,7 +14,7 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Mm, Pt, RGBColor
 
-from psicometria import categoria_color_rango
+from psicometria import categoria_color_rango, redondear_z_a_tercio
 
 COLOR_TEXTO_BASE = RGBColor(0x1E, 0x1E, 0x1E)
 COLOR_AZUL_INSTITUCIONAL = RGBColor(0x1B, 0x36, 0x5D)
@@ -429,7 +429,9 @@ def agregar_markdown_a_doc(doc: Document, texto_markdown: str, omitir_primer_h1:
         i += 1
 
 
-def _configurar_documento_base(doc: Document, datos_filiacion: dict | None = None) -> None:
+def _configurar_documento_base(
+    doc: Document, datos_filiacion: dict | None = None, incluir_confidencialidad: bool = False
+) -> None:
     for section in doc.sections:
         section.page_width = Mm(210)
         section.page_height = Mm(297)
@@ -442,6 +444,14 @@ def _configurar_documento_base(doc: Document, datos_filiacion: dict | None = Non
         header = section.header
         p_hdr = header.paragraphs[0]
         p_hdr.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        institucion = ((datos_filiacion or {}).get("institucion") or "").strip()
+        if institucion:
+            p_hdr.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            membrete = p_hdr.add_run(institucion)
+            membrete.bold = True
+            membrete.font.size = Pt(11)
+            p_hdr = header.add_paragraph()
+            p_hdr.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         nombre = ((datos_filiacion or {}).get("nombre") or "").strip()
         fecha = ((datos_filiacion or {}).get("fecha_eval") or "").strip()
         if nombre and fecha:
@@ -461,6 +471,13 @@ def _configurar_documento_base(doc: Document, datos_filiacion: dict | None = Non
         footer = section.footer
         p_ftr = footer.paragraphs[0]
         p_ftr.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if incluir_confidencialidad:
+            p_ftr.add_run(
+                "Confidencial. Informe elaborado con alcance clínico. "
+                "Su finalidad es orientar la atención y no constituye una pericia judicial."
+            ).font.size = Pt(8)
+            p_ftr = footer.add_paragraph()
+            p_ftr.alignment = WD_ALIGN_PARAGRAPH.CENTER
         _agregar_campo_pagina(p_ftr)
 
     style_normal = doc.styles["Normal"]
@@ -513,6 +530,76 @@ def _agregar_tabla_z_dataframe(doc: Document, df_puntajes: pd.DataFrame) -> None
     _renderizar_tabla(doc, headers, rows)
 
 
+def _agregar_grilla_visual_z(doc: Document, df_puntajes: pd.DataFrame) -> None:
+    resultados = []
+    for _, fila in df_puntajes.iterrows():
+        try:
+            z = float(fila["Puntaje Z"])
+            tercio = redondear_z_a_tercio(z)
+        except (TypeError, ValueError):
+            continue
+        resultados.append((str(fila["Dominio / Prueba / Subtest"]), z, round(tercio * 3) + 10))
+    if not resultados:
+        return
+
+    _agregar_heading_personalizado(doc, 2, "Grilla visual de puntuaciones Z")
+    nota = doc.add_paragraph(
+        "Cada X indica el tercio más cercano. Los valores fuera de escala se marcan en el extremo. "
+        "La cifra exacta figura en los resultados registrados."
+    )
+    for run in nota.runs:
+        run.font.size = Pt(8)
+
+    tabla = doc.add_table(rows=2, cols=20)
+    tabla.autofit = False
+    tabla.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _set_table_borders(tabla)
+    anchos = [Cm(4.45)] + [Cm(0.635)] * 19
+    for columna, ancho in zip(tabla.columns, anchos):
+        columna.width = ancho
+    for fila in tabla.rows:
+        for celda, ancho in zip(fila.cells, anchos):
+            celda.width = ancho
+
+    def celda_texto(celda, texto, tam=8, fondo=None):
+        _set_cell_margins(celda, top=30, bottom=30, left=15, right=15)
+        celda.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        p = celda.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_after = Pt(0)
+        p.paragraph_format.line_spacing = 1
+        run = p.add_run(texto)
+        run.font.size = Pt(tam)
+        if fondo:
+            _set_cell_shading(celda, fondo)
+            run.font.bold = True
+
+    celda_texto(tabla.cell(0, 0).merge(tabla.cell(1, 0)), "Prueba / Subprueba", 8, "E2E8F0")
+    for desde, hasta, etiqueta, fondo in (
+        (1, 3, "Déficit", "FADBD8"),
+        (4, 6, "Dificultad", "FDEBD0"),
+        (7, 13, "Normal", "E8F8F5"),
+        (14, 16, "Normal alto", "EBF5FB"),
+        (17, 19, "Superior", "D6EAF8"),
+    ):
+        celda_texto(tabla.cell(0, desde).merge(tabla.cell(0, hasta)), etiqueta, 7.5, fondo)
+    for columna, tercio in enumerate(range(-9, 10), start=1):
+        entero, fraccion = divmod(abs(tercio), 3)
+        signo = "−" if tercio < 0 else "+" if tercio > 0 else ""
+        marca = f"{signo}{entero or ''}{('', '⅓', '⅔')[fraccion]}" if tercio else "0"
+        celda_texto(tabla.cell(1, columna), marca, 6.5)
+    for fila in tabla.rows:
+        _set_repeat_header(fila)
+        _prevent_row_split(fila)
+    for nombre, z, columna_activa in resultados:
+        fila = tabla.add_row()
+        _prevent_row_split(fila)
+        celda_texto(fila.cells[0], f"{nombre} ({z:+.2f})", 7.5)
+        for columna in range(1, 20):
+            activa = columna == columna_activa
+            celda_texto(fila.cells[columna], "X" if activa else "", 8, "DFEAF7" if activa else None)
+
+
 def _contiene_firma(texto_markdown: str, firma_profesional: str) -> bool:
     lineas = [ln.strip().lower() for ln in (texto_markdown or "").splitlines() if ln.strip()]
     ultimas = " ".join(lineas[-8:])
@@ -532,10 +619,12 @@ def generar_docx_bytes(
     incluir_tabla_filiacion: bool = False,
     incluir_tabla_z: bool = False,
     firma_profesional: str = "",
+    incluir_grilla_visual: bool = False,
+    incluir_confidencialidad: bool = False,
 ) -> bytes:
     """Genera un documento Word (.docx) institucional en memoria a partir de Markdown."""
     doc = Document()
-    _configurar_documento_base(doc, datos_filiacion=datos_filiacion)
+    _configurar_documento_base(doc, datos_filiacion=datos_filiacion, incluir_confidencialidad=incluir_confidencialidad)
 
     texto_limpio = _desenvolver_bloque_codigo_markdown(texto_markdown)
     primera_linea = next((ln.strip() for ln in texto_limpio.splitlines() if ln.strip()), "")
@@ -551,6 +640,9 @@ def generar_docx_bytes(
         _agregar_tabla_z_dataframe(doc, df_puntajes)
 
     agregar_markdown_a_doc(doc, texto_limpio, omitir_primer_h1=incluir_tabla_filiacion)
+
+    if incluir_grilla_visual and df_puntajes is not None:
+        _agregar_grilla_visual_z(doc, df_puntajes)
 
     firma_limpia = (firma_profesional or "").strip()
     if (

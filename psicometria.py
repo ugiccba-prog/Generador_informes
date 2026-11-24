@@ -13,7 +13,12 @@ from catalogo_clinico import (
     ESCALA_BRUTO,
     ESCALA_CI,
     ESCALA_ESCALAR,
-    ESCALA_PERCENTIL,
+    ESCALA_PERCENTIL_DIRECTO,
+    ESCALA_PERCENTIL_INVERSO,
+    ESCALA_PERCENTIL_LEGADO,
+    ESCALA_PERCENTIL_ACUMULADO,
+    ESCALA_SEGUNDOS,
+    ESCALA_T_REACCION,
     ESCALA_T_DIRECTO,
     ESCALA_T_INVERSO,
     ESCALA_Z_DIRECTO,
@@ -27,6 +32,22 @@ COLUMNAS_PROCESADAS = [
     "Rango Clínico",
     "Notas",
 ]
+
+ESCALAS_SIN_Z = {
+    ESCALA_BRUTO: "Puntaje Bruto / Cualitativo",
+    ESCALA_SEGUNDOS: "Tiempo bruto en segundos",
+    ESCALA_PERCENTIL_ACUMULADO: "Interpretar según tabla de la prueba",
+}
+NESPLORA_ERRORES = {
+    "Nesplora Aula - Omisiones Totales",
+    "Nesplora Aula - Comisiones Totales",
+    "Nesplora Aula - Actividad Motora",
+}
+REACCION_TOTAL = {
+    "CPT-II - Tiempo de Reacción (Hit RT)",
+    "CPT-3 - Tiempo de Reacción (Hit RT)",
+    "Nesplora Aula - Tiempo de Reacción (TR)",
+}
 
 _NORMAL_DIST = statistics.NormalDist(0.0, 1.0)
 
@@ -58,8 +79,8 @@ def clasificar_z(z: float) -> str:
 
 def calcular_z_y_rango(valor: float, tipo_escala: str) -> tuple[float | None, str]:
     """Convierte un puntaje bruto/estándar/percentil a puntaje Z y rango clínico."""
-    if tipo_escala == ESCALA_BRUTO:
-        return None, "Puntaje Bruto / Cualitativo"
+    if tipo_escala in ESCALAS_SIN_Z:
+        return None, ESCALAS_SIN_Z[tipo_escala]
 
     try:
         val = float(valor)
@@ -77,10 +98,18 @@ def calcular_z_y_rango(valor: float, tipo_escala: str) -> tuple[float | None, st
         z = (val - 50.0) / 10.0
     elif tipo_escala == ESCALA_T_INVERSO:
         z = (50.0 - val) / 10.0
-    elif tipo_escala == ESCALA_PERCENTIL:
-        if val < 0.01 or val > 99.99:
+    elif tipo_escala == ESCALA_T_REACCION:
+        if val < 40:
+            return None, "Atípico rápido"
+        if val >= 60:
+            return round((50.0 - val) / 10.0, 2), "Respuesta lenta"
+        return round((50.0 - val) / 10.0, 2), "Velocidad en intervalo de referencia"
+    elif tipo_escala in (ESCALA_PERCENTIL_DIRECTO, ESCALA_PERCENTIL_INVERSO, ESCALA_PERCENTIL_LEGADO):
+        if not 0.01 <= val <= 99.99:
             return None, "Percentil fuera de rango (0,01 a 99,99)"
         z = _NORMAL_DIST.inv_cdf(val / 100.0)
+        if tipo_escala == ESCALA_PERCENTIL_INVERSO:
+            z = -z
     elif tipo_escala == ESCALA_Z_DIRECTO:
         z = val
     else:
@@ -91,6 +120,20 @@ def calcular_z_y_rango(valor: float, tipo_escala: str) -> tuple[float | None, st
         z_round = 0.0
 
     return z_round, clasificar_z(z_round)
+
+
+def redondear_z_a_tercio(z: float) -> float:
+    """Ubica la marca en el tercio más cercano del intervalo visual [-3, +3]."""
+    if not math.isfinite(z):
+        raise ValueError("Se requiere una puntuación Z finita.")
+    tercios = min(9, math.floor(abs(z) * 3 + 0.5))
+    return math.copysign(tercios, z) / 3 if tercios else 0.0
+
+
+def _escala_efectiva(nombre: str, escala: str) -> str:
+    if nombre in REACCION_TOTAL and escala == ESCALA_T_INVERSO:
+        return ESCALA_T_REACCION
+    return escala
 
 
 def _normalizar_texto(texto: str) -> str:
@@ -112,7 +155,7 @@ def categoria_color_rango(rango: str) -> str:
         return "limitrofe_bajo"
     if "deficit" in norm:
         return "deficit"
-    if "dificultad" in norm:
+    if "dificultad" in norm or norm in {"atipico rapido", "respuesta lenta"}:
         return "dificultad"
     if "tendencia baja" in norm:
         return "tendencia_baja"
@@ -167,14 +210,20 @@ def revisar_carga_puntajes(df: pd.DataFrame) -> tuple[list[str], list[str]]:
             vistas[clave] = fila
         if not tiene_puntaje:
             continue
-        escala = _texto_limpio(datos.get("Tipo de Escala"))
+        escala = _escala_efectiva(nombre, _texto_limpio(datos.get("Tipo de Escala")))
         try:
             valor = float(puntaje)
         except (TypeError, ValueError):
             valor = math.nan
         if not math.isfinite(valor):
             errores.append(f"Fila {fila}: ingresá un puntaje numérico válido.")
-        elif escala != ESCALA_BRUTO:
+        elif nombre in NESPLORA_ERRORES and escala in (ESCALA_PERCENTIL_DIRECTO, ESCALA_PERCENTIL_LEGADO):
+            errores.append(f"Fila {fila}: para un indicador de error o actividad del informe clínico usá el percentil inverso. Cotejá la fuente.")
+        elif nombre in REACCION_TOTAL and escala == ESCALA_T_DIRECTO:
+            errores.append(f"Fila {fila}: elegí T de tiempo de reacción para aplicar el criterio bidireccional.")
+        elif escala == ESCALA_SEGUNDOS and valor <= 0:
+            errores.append(f"Fila {fila}: el tiempo debe ser mayor que cero.")
+        elif escala not in ESCALAS_SIN_Z and escala != ESCALA_T_REACCION:
             z, motivo = calcular_z_y_rango(valor, escala)
             if z is None:
                 errores.append(f"Fila {fila}: {motivo if escala else 'Elegí la escala del puntaje informado'}.")
@@ -190,7 +239,7 @@ def procesar_tabla_puntajes(df: pd.DataFrame) -> pd.DataFrame:
     for _, row in df.iterrows():
         nombre_item = _texto_limpio(row.get("Dominio / Prueba / Subtest"))
         puntaje_raw = row.get("Puntaje")
-        escala_item = _texto_limpio(row.get("Tipo de Escala"))
+        escala_item = _escala_efectiva(nombre_item, _texto_limpio(row.get("Tipo de Escala")))
         nota_item = _texto_limpio(row.get("Observación"))
 
         tiene_puntaje = puntaje_raw is not None and pd.notna(puntaje_raw)

@@ -11,7 +11,7 @@ from requests import RequestException
 
 DOCS_SCOPE = "https://www.googleapis.com/auth/documents.readonly"
 RECURSO_ID = re.compile(r"[A-Za-z0-9_-]+")
-MAX_CARACTERES_GUIA = 12_000
+MAX_CARACTERES_GUIA = 30_000
 
 
 def recurso_configurado(clave: str, secretos) -> str:

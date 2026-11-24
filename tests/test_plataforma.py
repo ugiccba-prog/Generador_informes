@@ -7,12 +7,15 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from zipfile import ZipFile
 import warnings
 
 from docx import Document
 from docx.oxml.ns import qn
 import pandas as pd
 
+import analisis_clinico
 import borrador
 import catalogo_clinico
 import exportador_docx
@@ -251,6 +254,7 @@ class TestMotorIA(unittest.TestCase):
         fake_client = MagicMock()
         fake_uploaded = MagicMock(uri="files/abc123")
         fake_uploaded.name = "files/abc123"
+        fake_uploaded.state = "ACTIVE"
         fake_client.files.upload.return_value = fake_uploaded
 
         archivos = [
@@ -263,12 +267,13 @@ class TestMotorIA(unittest.TestCase):
             archivos, fake_client, max_inline_bytes=100
         )
         try:
-            self.assertEqual(len(bloques), 3)
-            self.assertEqual(bloques[0]["type"], "document")
-            self.assertIn("data", bloques[0])
-            self.assertEqual(bloques[1]["type"], "text")
-            self.assertIn("notas.csv", bloques[1]["text"])
-            self.assertEqual(bloques[2], {"type": "document", "uri": "files/abc123", "mime_type": "application/pdf"})
+            self.assertEqual(len(bloques), 5)
+            self.assertEqual(bloques[1]["type"], "document")
+            self.assertIn("data", bloques[1])
+            self.assertEqual(bloques[2]["type"], "text")
+            self.assertIn("Adjunto 2 (csv)", bloques[2]["text"])
+            self.assertNotIn("notas.csv", bloques[2]["text"])
+            self.assertEqual(bloques[4], {"type": "document", "uri": "files/abc123", "mime_type": "application/pdf"})
             self.assertEqual(uploaded_names, ["files/abc123"])
             self.assertEqual(len(temp_paths), 1)
             self.assertTrue(os.path.exists(temp_paths[0]))
@@ -281,6 +286,7 @@ class TestMotorIA(unittest.TestCase):
         fake_client = MagicMock()
         fake_uploaded = MagicMock(uri="files/remoto-1")
         fake_uploaded.name = "files/remoto-1"
+        fake_uploaded.state = "ACTIVE"
         fake_client.files.upload.return_value = fake_uploaded
         fake_client.interactions.create.return_value = MagicMock(output_text='{"dominios":{},"datos_adjuntos":"Adjunto 1, página 2. Resultado registrado."}')
 
@@ -324,6 +330,64 @@ class TestMotorIA(unittest.TestCase):
                     store=False,
                 )
         fake_client.files.delete.assert_called_once_with(name="files/remoto-1")
+
+
+    def test_pdf_grande_espera_active_antes_de_generar(self):
+        cliente = MagicMock()
+        cliente.files.upload.return_value = SimpleNamespace(name="files/demo", state="PROCESSING")
+        cliente.files.get.return_value = SimpleNamespace(name="files/demo", state="ACTIVE", uri="uri-demo")
+        cliente.interactions.create.return_value.output_text = '{"dominios":{},"datos_adjuntos":"Dato ficticio"}'
+        archivo = {"name": "demo.pdf", "bytes": b"%PDF-1.4" + b"0" * 20_000_000}
+        with patch("motor_ia.genai.Client", return_value=cliente), patch("motor_ia.time.sleep"):
+            borrador_final = motor_ia.generar_informe_clinico("clave", "modelo", "low", {}, [archivo])
+        self.assertIn("Dato ficticio", borrador_final)
+        self.assertEqual([llamada[0] for llamada in cliente.mock_calls], [
+            "files.upload", "files.get", "interactions.create", "files.delete",
+        ])
+
+    def test_polling_de_adjuntos_y_limpieza_si_falla_procesamiento(self):
+        cliente = MagicMock()
+        cliente.files.upload.return_value = SimpleNamespace(name="files/demo", state="PROCESSING")
+        cliente.files.get.return_value = SimpleNamespace(name="files/demo", state="FAILED")
+        archivos = [{"name": "demo.pdf", "bytes": b"%PDF-1.4 bytes de prueba"}]
+        with patch("motor_ia.genai.Client", return_value=cliente), patch("motor_ia.time.sleep"), patch(
+            "motor_ia.MAX_INLINE_PDF_BYTES", 2
+        ):
+            with self.assertRaisesRegex(ValueError, "procesar"):
+                motor_ia.generar_informe_clinico("clave", "modelo", "low", {}, archivos)
+
+        cliente.files.get.assert_called_once_with(name="files/demo")
+        cliente.files.delete.assert_called_once_with(name="files/demo")
+        cliente.interactions.create.assert_not_called()
+        ruta_temporal = cliente.files.upload.call_args.kwargs["file"]
+        self.assertFalse(Path(ruta_temporal).exists())
+
+    def test_adjunta_imagen_y_extrae_parrafos_y_tabla_word(self):
+        archivo_word = io.BytesIO()
+        doc = Document()
+        doc.add_paragraph("Nota del caso ficticio")
+        doc.add_table(rows=1, cols=1).cell(0, 0).text = "Puntaje ficticio"
+        doc.save(archivo_word)
+        bloques, _, _ = motor_ia.preparar_adjuntos_interaccion(
+            [{"name": "foto.webp", "bytes": b"imagen"}, {"name": "ficha.docx", "bytes": archivo_word.getvalue()}],
+            MagicMock(),
+        )
+        self.assertEqual(bloques[1]["mime_type"], "image/webp")
+        self.assertIn("Adjunto 2 (docx)", bloques[2]["text"])
+        self.assertIn("Nota del caso ficticio\nPuntaje ficticio", bloques[2]["text"])
+
+    def test_excel_extrae_solo_filas_con_datos_y_conserva_cero(self):
+        archivo = io.BytesIO()
+        with ZipFile(archivo, "w") as libro:
+            libro.writestr("xl/workbook.xml", "<workbook/>")
+        hoja = SimpleNamespace(title="Datos", max_row=3, max_column=2, values=[(None, None), (0, "dato"), (" ", None)])
+        libro_simulado = MagicMock()
+        libro_simulado.worksheets = [hoja]
+        modulo = SimpleNamespace(load_workbook=MagicMock(return_value=libro_simulado))
+        with patch.dict("sys.modules", {"openpyxl": modulo}):
+            texto = motor_ia._texto_adjunto(archivo.getvalue(), ".xlsx")
+        self.assertEqual(texto, "Datos, fila 2: 0 | dato")
+        libro_simulado.close.assert_called_once()
 
 
 class TestExportadorDocx(unittest.TestCase):
@@ -379,6 +443,100 @@ El rendimiento en memoria operativa fue **adecuado** con ***excelente*** disposi
         shd_deficit = tabla.rows[3].cells[3]._tc.tcPr.find(qn("w:shd"))
         self.assertIsNotNone(shd_deficit)
         self.assertEqual(shd_deficit.get(qn("w:fill")), "FADBD8")
+
+
+    def test_grilla_visual_membrete_y_confidencialidad(self):
+        df = pd.DataFrame({"Dominio / Prueba / Subtest": ["Prueba 1", "Prueba 2", "Texto"], "Puntaje Z": ["-1.64", "+4.10", "N/A"]})
+        doc = Document(io.BytesIO(exportador_docx.generar_docx_bytes(
+            "# Informe de prueba", datos_filiacion={"institucion": "Servicio de ejemplo"},
+            df_puntajes=df, incluir_grilla_visual=True, incluir_confidencialidad=True,
+        )))
+        tabla = doc.tables[0]
+        self.assertEqual(len(tabla.columns), 20)
+        self.assertEqual(len(tabla.rows), 4)
+        self.assertEqual(tabla.rows[1].cells[10].text, "0")
+        self.assertEqual(tabla.rows[2].cells[5].text, "X")
+        self.assertEqual(tabla.rows[3].cells[19].text, "X")
+        self.assertIn("Servicio de ejemplo", doc.sections[0].header.paragraphs[0].text)
+        self.assertIn("Confidencial", doc.sections[0].footer.paragraphs[0].text)
+
+
+class TestAnalisisClinico(unittest.TestCase):
+    def fila(self, nombre, valor, escala, nota=""):
+        return {"Dominio / Prueba / Subtest": nombre, "Puntaje": valor, "Tipo de Escala": escala, "Observación": nota}
+
+    def test_percentil_inverso_y_tiempo_bidireccional(self):
+        c = catalogo_clinico
+        self.assertEqual(psicometria.calcular_z_y_rango(95, c.ESCALA_PERCENTIL_INVERSO), (-1.64, "Dificultad"))
+        self.assertEqual(psicometria.calcular_z_y_rango(95, c.ESCALA_PERCENTIL_LEGADO), (1.64, "Normal Alto"))
+        self.assertEqual(psicometria.redondear_z_a_tercio(-1.64), -5/3)
+        self.assertEqual(psicometria.redondear_z_a_tercio(3.8), 3.0)
+        filas = [
+            self.fila("Nesplora Aula - Omisiones Totales", 95, c.ESCALA_PERCENTIL_DIRECTO),
+            self.fila("CPT-II - Tiempo de Reacción (Hit RT)", 39, c.ESCALA_T_INVERSO),
+        ]
+        df = pd.DataFrame(filas)
+        self.assertEqual(len(psicometria.revisar_carga_puntajes(df)[0]), 1)
+        self.assertEqual(psicometria.procesar_tabla_puntajes(df).iloc[1]["Rango Clínico"], "Atípico rápido")
+
+    def test_comparaciones_usan_la_misma_bateria_y_escala(self):
+        c = catalogo_clinico
+        filas = [
+            self.fila("WISC-V - Índice de Comprensión Verbal (ICV)", 120, c.ESCALA_CI),
+            self.fila("WISC-V - Índice de Memoria de Trabajo (IMT)", 90, c.ESCALA_CI),
+            self.fila("WISC-V - Índice de Capacidad General (ICG)", 122, c.ESCALA_CI),
+            self.fila("WISC-V - Índice de Competencia Cognitiva (ICC)", 104, c.ESCALA_CI),
+            self.fila("CPT-3 - Tiempo de Reacción (Hit RT)", 38, c.ESCALA_T_REACCION),
+            self.fila("CPT-3 - Comisiones (T)", 64, c.ESCALA_T_INVERSO),
+            self.fila("Nesplora Aula - Omisiones Totales", 66, c.ESCALA_T_INVERSO),
+            self.fila("Nesplora Aula - Comisiones Totales", 45, c.ESCALA_T_INVERSO),
+        ]
+        indicadores = analisis_clinico.analizar_resultados(filas, ["WISC-V"], 204)
+        self.assertTrue(any("fuera del rango" in i.detalle for i in indicadores))
+        self.assertTrue(any("Amplitud 30" in i.detalle and "2/5" in i.detalle for i in indicadores))
+        self.assertTrue(any("ICG menos ICC: +18" in i.detalle for i in indicadores))
+        self.assertTrue(any(i.prueba == "CPT-3" and "velocidad y precisión" in i.detalle for i in indicadores))
+        self.assertTrue(any(i.prueba == "Nesplora Aula" and "frecuencia de respuesta" in i.detalle for i in indicadores))
+        ambiguas = filas + [self.fila("CPT-3 - Comisiones (T)", 42, c.ESCALA_T_INVERSO)]
+        self.assertFalse(any("velocidad y precisión" in i.detalle for i in analisis_clinico.analizar_resultados(ambiguas)))
+
+    def test_derivados_memoria_y_cortes(self):
+        c = catalogo_clinico
+        filas = [
+            self.fila("Stroop Golden - P bruto", 100, c.ESCALA_BRUTO),
+            self.fila("Stroop Golden - C bruto", 60, c.ESCALA_BRUTO),
+            self.fila("Stroop Golden - PC bruto", 30, c.ESCALA_BRUTO),
+            self.fila("Trail Making Test - Parte A (segundos)", 30, c.ESCALA_SEGUNDOS),
+            self.fila("Trail Making Test - Parte B (segundos)", 93, c.ESCALA_SEGUNDOS),
+            self.fila("RAVLT - Total Aprendizaje (Ensayos A1-A5)", 0.10, c.ESCALA_Z_DIRECTO),
+            self.fila("RAVLT - Recuerdo Diferido (A7)", -1.9, c.ESCALA_Z_DIRECTO),
+            self.fila("RAVLT - Reconocimiento", -1.4, c.ESCALA_Z_DIRECTO),
+            self.fila("BRIEF-2 - Inhibición", 69, c.ESCALA_T_INVERSO),
+            self.fila("SNAP-IV - Desatención (suma 0 a 27, Planilla Memoria)", 15, c.ESCALA_BRUTO),
+            self.fila("Vineland Forma B - Edad social (meses)", 90, c.ESCALA_BRUTO),
+        ]
+        resumen = "\n".join(x.detalle for x in analisis_clinico.analizar_resultados(filas, edad_meses=120))
+        for texto in ("37.50", "-7.50", "3.10", "+63.00", "hipótesis de dificultad de retención",
+                      "potencialmente clínico", "corte de la Planilla Memoria", "75.00"):
+            self.assertIn(texto, resumen)
+
+    def test_planilla_autoestima_vineland_y_empate_durand(self):
+        bruto = catalogo_clinico.ESCALA_BRUTO
+        filas = [
+            self.fila("Autoestima - Corporal (Planilla Memoria)", 12, bruto),
+            self.fila("Autoestima - Social (Planilla Memoria)", 13, bruto),
+            self.fila("Vineland Forma B - Edad social (meses)", 270, bruto),
+            *[self.fila(f"Durand MAS - {funcion} (suma 0 a 24)", valor, bruto)
+              for funcion, valor in zip(("Sensorial", "Escape", "Atención", "Tangible"), (8, 16, 16, 4))],
+        ]
+        salida = analisis_clinico.analizar_resultados(filas, edad_meses=360)
+        por_prueba = {i.prueba: i.detalle for i in salida}
+        self.assertIn("Área corporal", por_prueba["Autoestima"])
+        self.assertNotIn("social", por_prueba["Autoestima"])
+        self.assertIn("sin tope 75.00", por_prueba["Vineland Forma B"])
+        self.assertIn("90, normal promedio", por_prueba["Vineland Forma B"])
+        self.assertIn("Mayor media: Escape / Atención", por_prueba["Durand MAS"])
+
 
 
 class TestMemoriaYBorrador(unittest.TestCase):

@@ -10,7 +10,8 @@ from catalogo_clinico import (
     CATALOGO_SUBPRUEBAS,
     ESCALA_CI,
     ESCALA_ESCALAR,
-    ESCALA_PERCENTIL,
+    ESCALA_PERCENTIL_DIRECTO,
+    ESCALA_PERCENTIL_INVERSO,
     ESCALA_T_DIRECTO,
     ESCALA_T_INVERSO,
     ESCALAS_CALCULADORA,
@@ -18,6 +19,7 @@ from catalogo_clinico import (
     MODELOS_GEMINI,
     MODELOS_INFORME,
 )
+from analisis_clinico import analizar_resultados, avisos_baremos_memoria
 from borrador import construir_borrador, grilla_markdown
 from exportador_docx import generar_docx_bytes
 from memoria_drive import leer_guia, recurso_configurado, validar_guia
@@ -49,7 +51,8 @@ DEFAULTS_CALCULADORA = {
     ESCALA_CI: 100.0,
     ESCALA_T_DIRECTO: 50.0,
     ESCALA_T_INVERSO: 50.0,
-    ESCALA_PERCENTIL: 50.0,
+    ESCALA_PERCENTIL_DIRECTO: 50.0,
+    ESCALA_PERCENTIL_INVERSO: 50.0,
 }
 
 # =====================================================================
@@ -83,7 +86,7 @@ with st.sidebar:
             index=config_modelo["thinking_levels"].index(config_modelo["default_thinking"]),
             key=f"razonamiento_{modelo_gemini}",
         )
-        st.caption("Gemini recibe únicamente las notas por dominio y los adjuntos que confirmes.")
+        st.caption("Gemini recibe notas por dominio, adjuntos y los indicadores que confirmes.")
 
     st.divider()
     st.subheader("Memoria de Drive")
@@ -131,7 +134,7 @@ with st.sidebar:
     elif "calc_valor" not in st.session_state:
         st.session_state["calc_valor"] = DEFAULTS_CALCULADORA.get(esc_calc, 10.0)
 
-    if esc_calc == ESCALA_PERCENTIL:
+    if esc_calc in (ESCALA_PERCENTIL_DIRECTO, ESCALA_PERCENTIL_INVERSO):
         val_calc = st.number_input(
             "Percentil",
             min_value=0.01,
@@ -242,6 +245,7 @@ with c4:
     medico = st.text_input("Médico / Institución Solicitante")
     profesional_nombre = st.text_input("Profesional Evaluador/a (para la firma)")
     profesional_matricula = st.text_input("Título y Matrícula Profesional")
+    institucion = st.text_input("Institución o servicio (membrete opcional)")
 
 st.divider()
 
@@ -448,6 +452,10 @@ if not df_procesado.empty:
     st.markdown("##### ✅ Resumen de Puntuaciones Calculadas (que se enviarán al informe):")
     st.dataframe(df_procesado, width="stretch", hide_index=True)
     st.caption("La conversión Z es orientativa. Registrá el manual, edición y grupo normativo en Notas.")
+if "WCST" in pruebas_usadas:
+    st.caption("WCST: usá T directo si la tabla normativa ya orienta valores altos como mejor desempeño. Para recuentos usá puntaje bruto.")
+if "Nesplora Aula" in pruebas_usadas:
+    st.caption("Nesplora: elegí percentil inverso si el informe de origen indica que valores altos representan más errores o actividad.")
 
 col_p1, col_p2 = st.columns(2)
 with col_p1:
@@ -459,8 +467,8 @@ with col_p2:
     archivos_adjuntos = []
     if usar_ia:
         archivos_adjuntos = st.file_uploader(
-            "Adjuntar reportes desidentificados (PDF, CSV o TXT)",
-            type=["pdf", "csv", "txt"],
+            "Adjuntar archivos desidentificados (PDF, imágenes, Excel, Word, CSV o TXT)",
+            type=[extension.lstrip(".") for extension in motor_ia.EXTENSIONES_ADJUNTOS],
             accept_multiple_files=True,
         ) or []
     else:
@@ -607,6 +615,7 @@ datos_caso = {
     "preferencia": preferencia,
     "medico": medico,
     "firma_profesional": firma_profesional,
+    "institucion": institucion,
     "acompanante": acompanante,
     "quien_deriva": quien_deriva,
     "antecedentes": antecedentes,
@@ -649,6 +658,23 @@ datos_caso = {
 }
 
 archivos_del_caso = tuple(archivo.file_id for archivo in archivos_adjuntos)
+edad_meses = edad_calc[0] * 12 + edad_calc[1] if edad_calc else None
+indicadores = analizar_resultados(df_editado.to_dict("records"), pruebas_usadas, edad_meses)
+with st.expander("Indicadores y controles psicométricos"):
+    baremo_brief_ninas = False
+    if "BRIEF" in pruebas_usadas or "BRIEF-2" in pruebas_usadas:
+        baremo_brief_ninas = st.checkbox("Consultar las fotos BRIEF para padres de niñas")
+    avisos_baremos = list(avisos_baremos_memoria(pruebas_usadas, edad_meses, baremo_brief_ninas))
+    for indicador in indicadores:
+        st.write(f"**{indicador.prueba}** · {indicador.detalle}")
+    for aviso in avisos_baremos:
+        st.caption(aviso)
+    if not indicadores and not avisos_baremos:
+        st.caption("Los indicadores aparecen al cargar datos comparables de una misma batería.")
+    incluir_indicadores_ia = bool(usar_ia and indicadores) and st.checkbox(
+        "Incluir los indicadores calculados en la solicitud a Gemini", value=True
+    )
+    indicadores_para_ia = [f"{i.prueba}: {i.detalle}" for i in indicadores] if incluir_indicadores_ia else []
 
 pendientes = []
 if not quien_deriva.strip():
@@ -666,7 +692,7 @@ puede_asistir = usar_ia and bool(motor_ia.notas_por_dominio(datos_caso) or archi
 if usar_ia and not puede_asistir:
     st.caption("Con notas por dominio o adjuntos podés usar Gemini. El resto del informe se arma en la aplicación.")
 confirmar_envio = puede_asistir and st.checkbox(
-    "Revisé que las notas por dominio y los adjuntos estén desidentificados y autorizo enviarlos a Gemini.",
+    "Revisé las notas, adjuntos e indicadores seleccionados y autorizo el envío desidentificado a Gemini.",
     key=f"confirmar_envio_gemini_{st.session_state.get('envios_gemini', 0)}",
 )
 boton_generar = st.button("Generar borrador", type="primary", width="stretch")
@@ -701,8 +727,8 @@ if boton_generar:
         st.error("Revisá la desidentificación y confirmá el envío a Gemini.")
     elif puede_asistir and guia_aprobada is None:
         st.error("Corregí la guía de redacción o desmarcá su envío.")
-    elif puede_asistir and sum(archivo.size for archivo in archivos_adjuntos) > motor_ia.MAX_INLINE_PDF_BYTES:
-        st.error("Los adjuntos pueden sumar hasta 12 MB por solicitud.")
+    elif puede_asistir and sum(archivo.size for archivo in archivos_adjuntos) > motor_ia.MAX_ADJUNTOS_BYTES:
+        st.error("Los adjuntos pueden sumar hasta 50 MB por solicitud.")
     else:
         with st.spinner("Preparando el borrador…"):
             try:
@@ -720,7 +746,7 @@ if boton_generar:
                             api_key=api_key,
                             modelo=modelo_gemini,
                             thinking_level=thinking_level,
-                            datos_caso=datos_caso,
+                            datos_caso={**datos_caso, "indicadores_para_ia": indicadores_para_ia},
                             archivos=archivos_payload,
                             guia_estilo=guia_aprobada,
                         )
@@ -732,6 +758,7 @@ if boton_generar:
 
                 st.session_state["redaccion_asistida"] = puede_asistir
                 st.session_state["datos_del_borrador"] = (datos_caso, archivos_del_caso)
+                st.session_state["puntajes_del_borrador"] = df_procesado.copy()
                 st.session_state["informe_original"] = texto_generado
                 st.session_state["informe_actual"] = texto_generado
                 st.session_state["informe_version"] = st.session_state.get("informe_version", 0) + 1
@@ -739,6 +766,7 @@ if boton_generar:
                     "nombre": nombre,
                     "fecha_eval": fecha_eval_str,
                     "profesional": firma_profesional,
+                    "institucion": institucion,
                 }
 
             except Exception:
@@ -789,12 +817,19 @@ if st.session_state.get("informe_original"):
 
     meta = st.session_state.get("informe_meta") or {}
     texto_para_descarga = st.session_state["informe_actual"]
+    puntajes_exportados = st.session_state.get("puntajes_del_borrador")
+    hay_puntajes_z = puntajes_exportados is not None and puntajes_exportados["Puntaje Z"].ne("N/A").any()
+    incluir_grilla_visual = bool(hay_puntajes_z) and st.checkbox("Incluir grilla visual Z en Word", value=True)
+    incluir_confidencialidad = st.checkbox("Incluir nota de confidencialidad y alcance clínico en Word")
     docx_bytes = generar_docx_bytes(
         texto_markdown=texto_para_descarga,
         datos_filiacion=meta,
         incluir_tabla_filiacion=False,
         incluir_tabla_z=False,
         firma_profesional=meta.get("profesional", ""),
+        df_puntajes=puntajes_exportados,
+        incluir_grilla_visual=incluir_grilla_visual,
+        incluir_confidencialidad=incluir_confidencialidad,
     )
     nombre_base = sanitizar_nombre_archivo(meta.get("nombre", ""))
 
