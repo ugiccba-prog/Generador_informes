@@ -36,30 +36,15 @@ MODELOS_INFORME = [
 ]
 
 MODELOS_GEMINI = {
-    "gemini-4-hydrogen": {
-        "label": "Gemini 4 Hydrogen (Recomendado — equilibrado y rápido)",
-        "thinking_levels": ["low", "medium", "high", "xhigh"],
-        "default_thinking": "high",
-    },
-    "gemini-4-argon": {
-        "label": "Gemini 4 Argon (Razonamiento rápido y eficiente)",
-        "thinking_levels": ["low", "medium", "high"],
-        "default_thinking": "medium",
-    },
-    "gemini-4-neon": {
-        "label": "Gemini 4 Neon (Frontera rápido — requiere tier pago)",
-        "thinking_levels": ["low", "medium", "high", "xhigh"],
-        "default_thinking": "high",
-    },
-    "gemini-4-carbon": {
-        "label": "Gemini 4 Carbon (Máxima profundidad clínica)",
+    "gemini-3.8-flash": {
+        "label": "Gemini 3.8 Flash",
         "thinking_levels": ["low", "medium", "high"],
         "default_thinking": "medium",
     },
     "gemini-3.5-flash-lite": {
-        "label": "Gemini 3.5 Flash-Lite (Ultra rápido / bajo costo)",
+        "label": "Gemini 3.5 Flash-Lite",
         "thinking_levels": ["minimal", "low", "medium", "high"],
-        "default_thinking": "medium",
+        "default_thinking": "minimal",
     },
 }
 

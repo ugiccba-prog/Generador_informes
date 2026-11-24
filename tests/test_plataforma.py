@@ -13,8 +13,10 @@ from docx import Document
 from docx.oxml.ns import qn
 import pandas as pd
 
+import borrador
 import catalogo_clinico
 import exportador_docx
+import memoria_drive
 import motor_ia
 import psicometria
 
@@ -195,8 +197,8 @@ class TestPsicometria(unittest.TestCase):
 class TestMotorIA(unittest.TestCase):
     def test_system_prompt_y_prompt_caso_omision_vacios(self):
         sys_prompt = motor_ia.construir_system_prompt()
-        self.assertIn("Limítrofe (Dificultad / Déficit)", sys_prompt)
-        self.assertIn("Normal Alto (Tendencia superior)", sys_prompt)
+        self.assertIn("no generes filiación", sys_prompt)
+        self.assertIn("No inventes pruebas", sys_prompt)
         self.assertIn("Woodcock-Muñoz", sys_prompt)
         self.assertIn("Hit RT", sys_prompt)
         self.assertIn(catalogo_clinico.INTRODUCCIONES_DOMINIOS["intelectual"], sys_prompt)
@@ -208,6 +210,7 @@ class TestMotorIA(unittest.TestCase):
                 "observaciones_cualitativas": {"Memoria y Aprendizaje": "", "Atención": "Descenso sostenido"},
             }
         )
+        self.assertNotIn("Ana Gómez", prompt_caso)
         self.assertIn("- **Contacto y vínculo:** Adecuado", prompt_caso)
         self.assertNotIn("Predisposición", prompt_caso)
         self.assertNotIn("Memoria y Aprendizaje", prompt_caso)
@@ -269,21 +272,27 @@ class TestMotorIA(unittest.TestCase):
         fake_uploaded = MagicMock(uri="files/remoto-1")
         fake_uploaded.name = "files/remoto-1"
         fake_client.files.upload.return_value = fake_uploaded
-        fake_client.interactions.create.return_value = MagicMock(output_text="# INFORME\n\nTexto final")
+        fake_client.interactions.create.return_value = MagicMock(output_text="## Conclusiones\n\nTexto final")
 
         with patch("motor_ia.genai.Client", return_value=fake_client):
             texto = motor_ia.generar_informe_clinico(
                 api_key="test-key",
                 modelo="gemini-4-hydrogen",
                 thinking_level="xhigh",
-                datos_caso={"nombre": "Paciente Test"},
+                datos_caso={"nombre": "Paciente Test", "hc": "DEMO-123", "tabla_z_markdown": "| Puntaje |\n| --- |\n| +0.40 |"},
+                guia_estilo="Guía de prueba",
                 archivos=[{"name": "CPT.PDF", "bytes": b"%PDF-1.4 inline"}],
                 store=False,
             )
 
-        self.assertEqual(texto, "# INFORME\n\nTexto final")
+        self.assertIn("## Conclusiones\n\nTexto final", texto)
+        self.assertIn("Paciente Test", texto)
+        self.assertIn("| +0.40 |", texto)
         call_kwargs = fake_client.interactions.create.call_args.kwargs
         self.assertEqual(call_kwargs["model"], "gemini-4-hydrogen")
+        self.assertNotIn("Paciente Test", str(call_kwargs["input"]))
+        self.assertNotIn("DEMO-123", str(call_kwargs["input"]))
+        self.assertIn("Guía de prueba", str(call_kwargs["input"]))
         self.assertFalse(call_kwargs["store"])
         self.assertEqual(call_kwargs["generation_config"]["thinking_level"], "xhigh")
         self.assertNotIn("temperature", call_kwargs["generation_config"])
@@ -360,6 +369,32 @@ El rendimiento en memoria operativa fue **adecuado** con ***excelente*** disposi
         self.assertEqual(shd_deficit.get(qn("w:fill")), "FADBD8")
 
 
+class TestMemoriaYBorrador(unittest.TestCase):
+    def test_guia_solo_lectura(self):
+        sesion = MagicMock()
+        sesion.get.return_value.json.return_value = {
+            "title": "Guía de prueba",
+            "body": {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Texto de estilo\n"}}]}}]},
+        }
+        with patch("memoria_drive.google.auth.default", return_value=(object(), "proyecto")), patch(
+            "memoria_drive.AuthorizedSession"
+        ) as cliente:
+            cliente.return_value.__enter__.return_value = sesion
+            self.assertEqual(memoria_drive.leer_guia("ID_demo"), ("Guía de prueba", "Texto de estilo"))
+            with self.assertRaises(ValueError):
+                memoria_drive.leer_guia("../ID_demo")
+        self.assertEqual(sesion.get.call_args.args[0], "https://docs.googleapis.com/v1/documents/ID_demo")
+        with self.assertRaises(ValueError):
+            memoria_drive.validar_guia(" ")
+
+    def test_exporta_grilla_con_signo_y_notas_literales(self):
+        datos = pd.DataFrame([{"Prueba": "Prueba_A", "Puntaje Z": "+0.40", "Notas": "A | B\n*C*"}])
+        tabla = borrador.grilla_markdown(datos)
+        md = borrador.construir_borrador({"tabla_z_markdown": tabla})
+        doc = Document(io.BytesIO(exportador_docx.generar_docx_bytes(md)))
+        self.assertEqual([celda.text for celda in doc.tables[0].rows[1].cells], ["Prueba_A", "+0.40", "A | B *C*"])
+
+
 class TestAppStreamlit(unittest.TestCase):
     def test_apptest_flujo_completo_y_persistencia(self):
         from streamlit.testing.v1 import AppTest
@@ -372,7 +407,7 @@ class TestAppStreamlit(unittest.TestCase):
             self.assertFalse(at.exception, f"Excepción al arrancar app.py: {at.exception}")
 
             # Verificar calculadora Z con Percentil en sidebar
-            at.sidebar.selectbox[2].set_value(catalogo_clinico.ESCALA_PERCENTIL).run()
+            at.sidebar.selectbox(key="calc_escala").set_value(catalogo_clinico.ESCALA_PERCENTIL).run()
             self.assertFalse(at.exception)
             at.sidebar.number_input[0].set_value(91.0).run()
             self.assertEqual(at.sidebar.metric[0].value, "Z = +1.34")
@@ -388,23 +423,28 @@ class TestAppStreamlit(unittest.TestCase):
             at.multiselect[1].set_value(["WISC-V"]).run()
             self.assertFalse(at.exception)
 
-            # Simular generación con motor_ia mockeado y verificar persistencia tras rerun
-            at.text_input[0].set_value("Pérez, Mateo").run()
-            if at.sidebar.text_input:
-                at.sidebar.text_input[0].set_value("fake-api-key").run()
-
-            with patch(
-                "motor_ia.generar_informe_clinico",
-                return_value="# INFORME DE PRUEBA\n\n## Conclusiones\nDesempeño **adecuado**.",
-            ):
+            at.text_input[0].set_value("Caso de prueba").run()
+            with patch("motor_ia.generar_informe_clinico") as generar:
                 at.button[0].click().run()
+                generar.assert_not_called()
                 self.assertFalse(at.exception)
-                self.assertEqual(len(at.error), 0, f"Errores en UI: {[e.value for e in at.error]}")
+                self.assertIn("Caso de prueba", at.session_state["informe_actual"])
+                self.assertIn("WISC-V", at.session_state["informe_actual"])
 
-            self.assertIn("INFORME DE PRUEBA", at.session_state["informe_actual"])
-            # Rerun adicional (por ejemplo cambio en calculadora): el informe persiste
+                at.sidebar.toggle[0].set_value(True).run()
+                if at.sidebar.text_input:
+                    at.sidebar.text_input[0].set_value("fake-api-key").run()
+                at.button[0].click().run()
+                generar.assert_not_called()
+                at.checkbox(key="confirmar_envio_gemini_0").check().run()
+                generar.return_value = "## Conclusiones\n\nTexto asistido de prueba"
+                at.button[0].click().run()
+                generar.assert_called_once()
+                self.assertFalse(at.exception)
+                self.assertEqual(len(at.error), 0)
+
             at.sidebar.number_input[0].set_value(50.0).run()
-            self.assertIn("INFORME DE PRUEBA", at.session_state["informe_actual"])
+            self.assertIn("Texto asistido de prueba", at.session_state["informe_actual"])
 
             deprecations = [
                 str(w.message)

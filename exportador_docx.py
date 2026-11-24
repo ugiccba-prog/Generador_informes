@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from html import unescape
 import re
 import pandas as pd
 from docx import Document
@@ -159,7 +160,7 @@ def agregar_runs_inline(
     pos = 0
     for match in _INLINE_TOKEN_RE.finditer(texto):
         if match.start() > pos:
-            r = paragraph.add_run(texto[pos:match.start()])
+            r = paragraph.add_run(unescape(texto[pos:match.start()]))
             r.bold = bold
             r.italic = italic
             r.font.name = "Arial"
@@ -176,7 +177,7 @@ def agregar_runs_inline(
         elif g_i2 is not None:
             agregar_runs_inline(paragraph, g_i2, bold=bold, italic=True, font_size=font_size, color=color)
         elif g_code is not None:
-            r = paragraph.add_run(g_code)
+            r = paragraph.add_run(unescape(g_code))
             r.bold = bold
             r.italic = italic
             r.font.name = "Arial"
@@ -186,7 +187,7 @@ def agregar_runs_inline(
         pos = match.end()
 
     if pos < len(texto):
-        r = paragraph.add_run(texto[pos:])
+        r = paragraph.add_run(unescape(texto[pos:]))
         r.bold = bold
         r.italic = italic
         r.font.name = "Arial"

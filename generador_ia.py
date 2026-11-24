@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from borrador import grilla_markdown
 from catalogo_clinico import BANCO_SUGERENCIAS, ESCALA_CI, ESCALA_T_INVERSO
 from exportador_docx import guardar_docx
 from motor_ia import generar_informe_clinico, resolver_api_key
@@ -17,12 +18,12 @@ def generar_informe_completo_con_ia() -> int:
         )
         return 1
 
-    paciente = "Pérez, Mateo"
-    hc = "402891"
+    paciente = "Caso ficticio"
+    hc = "DEMO-001"
     edad = "9 años, 4 meses"
     escolaridad = "4° Grado Primaria"
     fecha_eval = "Octubre 2026"
-    profesional = "Lic. Juan Machado"
+    profesional = "Profesional de ejemplo"
     firma = f"{profesional} — Matrícula Provincial / Nacional"
 
     df_entrada = pd.DataFrame(
@@ -79,6 +80,7 @@ def generar_informe_completo_con_ia() -> int:
         "nombre": paciente,
         "hc": hc,
         "edad_texto": edad,
+        "edad_para_ia": edad,
         "escolaridad": escolaridad,
         "fecha_eval": fecha_eval,
         "medico": "Equipo Médico / Escolar",
@@ -92,7 +94,7 @@ def generar_informe_completo_con_ia() -> int:
                 "verbalizaciones de agobio, requiriendo instigación verbal y pausas breves."
             )
         },
-        "tabla_z_markdown": df_procesado.to_markdown(index=False),
+        "tabla_z_markdown": grilla_markdown(df_procesado),
         "observaciones_cualitativas": {
             "Funcionamiento Intelectual (Wechsler)": (
                 "Marcada dispersión entre índices cristalizados/fluidos y los índices operativos (IMT, IVP)."
@@ -116,10 +118,10 @@ def generar_informe_completo_con_ia() -> int:
         ),
     }
 
-    print("Consultando a Gemini 4 Hydrogen mediante el motor clínico modular...")
+    print("Consultando a Gemini 3.8 Flash mediante el motor clínico modular...")
     texto_ia = generar_informe_clinico(
         api_key=api_key,
-        modelo="gemini-4-hydrogen",
+        modelo="gemini-3.8-flash",
         thinking_level="high",
         datos_caso=datos_caso,
         store=False,

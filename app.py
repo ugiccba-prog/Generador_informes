@@ -1,6 +1,7 @@
 """Interfaz Streamlit para la Plataforma Clínica de Informes Neuropsicológicos."""
 
 from datetime import date
+from pathlib import PurePath
 import pandas as pd
 import streamlit as st
 
@@ -17,7 +18,9 @@ from catalogo_clinico import (
     MODELOS_GEMINI,
     MODELOS_INFORME,
 )
+from borrador import construir_borrador, grilla_markdown
 from exportador_docx import generar_docx_bytes
+from memoria_drive import leer_guia, recurso_configurado, validar_guia
 import motor_ia
 from motor_ia import resolver_api_key
 from psicometria import (
@@ -55,39 +58,68 @@ DEFAULTS_CALCULADORA = {
 st.title("🧠 Generador Profesional de Informes Clínicos")
 st.caption("Evaluación Neuropsicológica, Desempeño Cognitivo y Psicopedagógica")
 
-api_key = resolver_api_key(st.secrets)
 with st.sidebar:
-    st.header("⚙️ Configuración")
-    if api_key:
-        st.caption("🔑 API Key cargada desde secretos o entorno.")
-    else:
-        api_key = st.text_input("Ingresá tu Gemini API Key", type="password")
+    st.header("Configuración")
+    usar_ia = st.toggle("Asistencia de redacción con Gemini", value=False)
+    api_key = ""
+    modelo_gemini = ""
+    thinking_level = ""
+    guia_aprobada = ""
 
-    modelo_gemini = st.selectbox(
-        "Modelo de IA",
-        options=list(MODELOS_GEMINI.keys()),
-        format_func=lambda m: MODELOS_GEMINI[m]["label"],
-        index=0,
-    )
+    if usar_ia:
+        api_key = resolver_api_key(st.secrets)
+        if not api_key:
+            api_key = st.text_input("Clave de Gemini", type="password")
 
-    niveles_disp = MODELOS_GEMINI[modelo_gemini]["thinking_levels"]
-    default_thinking = MODELOS_GEMINI[modelo_gemini]["default_thinking"]
-    if st.session_state.get("prev_modelo_ia") != modelo_gemini:
-        st.session_state["thinking_level_sel"] = default_thinking
-        st.session_state["prev_modelo_ia"] = modelo_gemini
-    elif st.session_state.get("thinking_level_sel") not in niveles_disp:
-        st.session_state["thinking_level_sel"] = default_thinking
+        modelo_gemini = st.selectbox(
+            "Modelo de IA",
+            options=list(MODELOS_GEMINI),
+            format_func=lambda modelo: MODELOS_GEMINI[modelo]["label"],
+        )
+        config_modelo = MODELOS_GEMINI[modelo_gemini]
+        thinking_level = st.selectbox(
+            "Nivel de razonamiento",
+            options=config_modelo["thinking_levels"],
+            index=config_modelo["thinking_levels"].index(config_modelo["default_thinking"]),
+            key=f"razonamiento_{modelo_gemini}",
+        )
+        st.caption("Gemini recibe los puntajes, las notas y los adjuntos que confirmes.")
 
-    thinking_level = st.selectbox(
-        "Nivel de razonamiento",
-        options=niveles_disp,
-        key="thinking_level_sel",
-        help="Controla la profundidad de análisis clínico (reemplaza la temperatura en Gemini 4).",
-    )
-    st.caption(
-        "🔒 Privacidad clínica: los informes no se almacenan en servidores (`store=False`) "
-        "y los PDFs se procesan en memoria."
-    )
+    st.divider()
+    st.subheader("Memoria de Drive")
+    carpeta_id = recurso_configurado("MEMORIA_DRIVE_CARPETA_ID", st.secrets)
+    guia_id = recurso_configurado("MEMORIA_DRIVE_GUIA_ID", st.secrets)
+    if carpeta_id:
+        st.link_button("Abrir carpeta Memoria", f"https://drive.google.com/drive/folders/{carpeta_id}")
+    if guia_id and st.button("Cargar guía de redacción de Drive"):
+        try:
+            titulo_guia, texto_guia = leer_guia(guia_id)
+        except (RuntimeError, ValueError) as error:
+            st.error(str(error))
+        else:
+            st.session_state["titulo_guia_memoria"] = titulo_guia
+            st.session_state["guia_memoria"] = texto_guia
+            st.session_state["revision_guia_memoria"] = st.session_state.get("revision_guia_memoria", 0) + 1
+
+    if st.session_state.get("titulo_guia_memoria"):
+        st.caption(f"Fuente cargada: {st.session_state['titulo_guia_memoria']}")
+    with st.expander("Guía de redacción"):
+        revision_guia = st.session_state.get("revision_guia_memoria", 0)
+        texto_guia = st.text_area(
+            "Referencia de estilo revisada (opcional)",
+            value=st.session_state.get("guia_memoria", ""),
+            key=f"texto_guia_{revision_guia}",
+            height=180,
+            placeholder="Pegá un extracto de estilo de Memoria sin datos de casos.",
+        )
+        if usar_ia and texto_guia.strip():
+            if st.checkbox("Incluir esta guía revisada en la solicitud a Gemini", key=f"confirmar_guia_{revision_guia}"):
+                try:
+                    guia_aprobada = validar_guia(texto_guia)
+                except ValueError as error:
+                    st.error(str(error))
+                    guia_aprobada = None
+        st.caption("Usá el manual de la edición y población correspondiente para confirmar cada baremo.")
 
     st.divider()
     st.subheader("🧮 Calculadora Rápida a Z")
@@ -179,15 +211,18 @@ with c2:
         max_value=date(2035, 12, 31),
         key="fecha_eval_input",
     )
-    if fecha_nac is not None and fecha_eval is not None:
-        edad_calc = calcular_edad_exacta(fecha_nac, fecha_eval)
-        if edad_calc is None:
-            st.warning("La fecha de evaluación es anterior a la fecha de nacimiento.")
-        else:
-            fechas_actuales = (fecha_nac, fecha_eval)
-            if st.session_state.get("prev_fechas_edad") != fechas_actuales:
-                st.session_state["edad_texto_input"] = formatear_edad(*edad_calc)
-                st.session_state["prev_fechas_edad"] = fechas_actuales
+    fechas_actuales = (fecha_nac, fecha_eval)
+    edad_calc = calcular_edad_exacta(fecha_nac, fecha_eval)
+    if fecha_nac and fecha_eval and edad_calc is None:
+        st.warning("La fecha de evaluación es anterior a la fecha de nacimiento.")
+    if st.session_state.get("prev_fechas_edad") != fechas_actuales:
+        edad_anterior = st.session_state.get("edad_calculada_previa")
+        if edad_calc is not None:
+            st.session_state["edad_texto_input"] = formatear_edad(*edad_calc)
+        elif st.session_state["edad_texto_input"] == edad_anterior:
+            st.session_state["edad_texto_input"] = ""
+        st.session_state["edad_calculada_previa"] = formatear_edad(*edad_calc) if edad_calc else None
+        st.session_state["prev_fechas_edad"] = fechas_actuales
 
     edad_texto = st.text_input(
         "Edad (años y meses)",
@@ -402,6 +437,7 @@ df_procesado = procesar_tabla_puntajes(df_editado)
 if not df_procesado.empty:
     st.markdown("##### ✅ Resumen de Puntuaciones Calculadas (que se enviarán al informe):")
     st.dataframe(df_procesado, width="stretch", hide_index=True)
+    st.caption("La conversión Z es orientativa. Registrá el manual, edición y grupo normativo en Notas.")
 
 col_p1, col_p2 = st.columns(2)
 with col_p1:
@@ -410,11 +446,15 @@ with col_p1:
         height=130,
     )
 with col_p2:
-    archivos_adjuntos = st.file_uploader(
-        "📎 Subir reportes en PDF (CPT-II, Nesplora Aula, Vineland) o CSV",
-        type=["pdf", "csv", "txt"],
-        accept_multiple_files=True,
-    )
+    archivos_adjuntos = []
+    if usar_ia:
+        archivos_adjuntos = st.file_uploader(
+            "Adjuntar reportes desidentificados (PDF, CSV o TXT)",
+            type=["pdf", "csv", "txt"],
+            accept_multiple_files=True,
+        ) or []
+    else:
+        st.caption("Para usar un reporte en el borrador local, transcribí sus resultados y la referencia en las notas.")
 
 st.divider()
 
@@ -508,7 +548,11 @@ if sug_terapeuticas_sel or sug_escolares_sel:
                 st.markdown(f"- **{item}:** {BANCO_SUGERENCIAS['escolares'][item]}")
 
 st.divider()
-boton_generar = st.button("🚀 Generar Informe Clínico Completo", type="primary", width="stretch")
+confirmar_envio = usar_ia and st.checkbox(
+    "Revisé que los datos libres, la grilla y los adjuntos estén desidentificados y autorizo enviarlos a Gemini.",
+    key=f"confirmar_envio_gemini_{st.session_state.get('envios_gemini', 0)}",
+)
+boton_generar = st.button("Generar borrador", type="primary", width="stretch")
 
 # =====================================================================
 # 9. EJECUCIÓN DEL MOTOR HÍBRIDO Y REVISIÓN PERSISTENTE
@@ -516,12 +560,16 @@ boton_generar = st.button("🚀 Generar Informe Clínico Completo", type="primar
 if boton_generar:
     hay_datos_caso = any(
         [
-            modelos_seleccionados,
             pruebas_usadas,
             not df_procesado.empty,
             texto_puntajes_libre.strip(),
             archivos_adjuntos,
             quien_deriva.strip(),
+            antecedentes.strip(),
+            obs_extra.strip(),
+            obs_vinculo, obs_predisp, obs_consignas, obs_desatencion, obs_motora,
+            obs_impulsividad, obs_frustracion, obs_ansiedad, obs_ritmo, obs_lenguaje,
+            alfabetizado,
             obs_wechsler.strip(),
             obs_memoria.strip(),
             obs_atencion_fe.strip(),
@@ -533,24 +581,25 @@ if boton_generar:
         ]
     )
 
-    if not api_key:
-        st.error("Por favor, ingresá tu API Key de Gemini en el menú lateral izquierdo.")
-    elif not hay_datos_caso:
-        st.warning(
-            "Cargá al menos un modelo de informe, pruebas, puntajes, adjuntos o notas clínicas "
-            "antes de generar el informe."
-        )
+    if not hay_datos_caso:
+        st.warning("Cargá pruebas, puntajes, adjuntos u observaciones antes de generar.")
+    elif fecha_nac and fecha_eval and fecha_eval < fecha_nac:
+        st.error("Corregí las fechas antes de generar el borrador.")
+    elif usar_ia and not api_key:
+        st.error("Ingresá la clave de Gemini en el menú lateral.")
+    elif usar_ia and not confirmar_envio:
+        st.error("Revisá la desidentificación y confirmá el envío a Gemini.")
+    elif usar_ia and guia_aprobada is None:
+        st.error("Corregí la guía de redacción o desmarcá su envío.")
+    elif usar_ia and sum(archivo.size for archivo in archivos_adjuntos) > motor_ia.MAX_INLINE_PDF_BYTES:
+        st.error("Los adjuntos pueden sumar hasta 12 MB por solicitud.")
     else:
-        with st.spinner("Analizando perfil clínico, procesando escalas Z y redactando el informe completo..."):
+        with st.spinner("Preparando el borrador…"):
             try:
                 fecha_nac_str = fecha_nac.strftime("%d/%m/%Y") if fecha_nac else ""
                 fecha_eval_str = fecha_eval.strftime("%d/%m/%Y") if fecha_eval else ""
 
-                tabla_z_markdown = (
-                    df_procesado.to_markdown(index=False)
-                    if not df_procesado.empty
-                    else "No se completaron puntajes en la grilla interactiva."
-                )
+                tabla_z_markdown = grilla_markdown(df_procesado)
 
                 detalle_terapeuticas = "\n".join(
                     [f"- {k}: {BANCO_SUGERENCIAS['terapeuticas'][k]}" for k in sug_terapeuticas_sel]
@@ -571,6 +620,7 @@ if boton_generar:
                     "nombre": nombre,
                     "hc": hc,
                     "edad_texto": edad_texto,
+                    "edad_para_ia": formatear_edad(*edad_calc) if edad_calc else "",
                     "fecha_nac": fecha_nac_str,
                     "fecha_eval": fecha_eval_str,
                     "escolaridad": escolaridad,
@@ -613,19 +663,25 @@ if boton_generar:
                     "recom_personalizadas": recom_personalizadas,
                 }
 
-                archivos_payload = [
-                    {"name": archivo.name, "bytes": archivo.getvalue()}
-                    for archivo in (archivos_adjuntos or [])
-                ]
-
-                texto_generado = motor_ia.generar_informe_clinico(
-                    api_key=api_key,
-                    modelo=modelo_gemini,
-                    thinking_level=thinking_level,
-                    datos_caso=datos_caso,
-                    archivos=archivos_payload,
-                    store=False,
-                )
+                if usar_ia:
+                    st.session_state["envios_gemini"] = st.session_state.get("envios_gemini", 0) + 1
+                    archivos_payload = [
+                        {
+                            "name": f"Adjunto {indice}{PurePath(archivo.name).suffix.lower()}",
+                            "bytes": archivo.getvalue(),
+                        }
+                        for indice, archivo in enumerate(archivos_adjuntos, start=1)
+                    ]
+                    texto_generado = motor_ia.generar_informe_clinico(
+                        api_key=api_key,
+                        modelo=modelo_gemini,
+                        thinking_level=thinking_level,
+                        datos_caso=datos_caso,
+                        archivos=archivos_payload,
+                        guia_estilo=guia_aprobada,
+                    )
+                else:
+                    texto_generado = construir_borrador(datos_caso)
 
                 st.session_state["informe_original"] = texto_generado
                 st.session_state["informe_actual"] = texto_generado
@@ -636,11 +692,12 @@ if boton_generar:
                     "profesional": firma_profesional,
                 }
 
-            except Exception as e:
-                st.error(f"Error al generar el informe: {e}")
+            except Exception:
+                st.error("No se pudo generar el borrador. Revisá la configuración o volvé a intentar en modo local.")
 
 if st.session_state.get("informe_original"):
-    st.subheader("📄 Informe Clínico Generado y Revisión")
+    st.subheader("Borrador y revisión")
+    st.caption("Verificá los resultados, su fuente y las conclusiones antes de entregar el informe.")
     version_inf = st.session_state.get("informe_version", 1)
     editor_key = f"editor_informe_{version_inf}"
     if editor_key not in st.session_state:
@@ -653,7 +710,7 @@ if st.session_state.get("informe_original"):
         ["👁️ Vista Previa Formateada", "✏️ Editar Informe antes de Descargar"]
     )
     with tab_vista:
-        st.markdown(texto_vigente)
+        st.markdown(texto_vigente.replace("![", r"\!\["))
     with tab_editar:
         texto_editado = st.text_area(
             "Editá o ajustá el texto del informe (Markdown):",
