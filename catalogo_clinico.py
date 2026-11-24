@@ -1,19 +1,24 @@
-"""Base de conocimiento clínica, escalas psicométricas y catálogo de baterías."""
+"""Base de conocimiento clínica, escalas psicométricas, presets y catálogo de baterías."""
 
 ESCALA_CI = "CI / Estándar (M=100, DE=15)"
 ESCALA_ESCALAR = "Escalar (M=10, DE=3)"
+ESCALA_V_SCALE = "v-scale Vineland (M=15, DE=3)"
 ESCALA_T_DIRECTO = "T Directo - Mayor es mejor (M=50, DE=10)"
 ESCALA_T_INVERSO = "T Inverso - Mayor es peor/error (M=50, DE=10)"
-ESCALA_PERCENTIL = "Percentil (Pc 1 a 99)"
+ESCALA_PERCENTIL_DIRECTO = "Percentil Directo - Mayor es mejor (Pc 1 a 99)"
+ESCALA_PERCENTIL_INVERSO = "Percentil Inverso - Mayor es peor/error (Pc 1 a 99)"
+ESCALA_PERCENTIL = ESCALA_PERCENTIL_DIRECTO
 ESCALA_Z_DIRECTO = "Puntaje Z directo"
 ESCALA_BRUTO = "Puntaje Bruto / Categoría (Ver Notas)"
 
 ESCALAS_DISPONIBLES = [
     ESCALA_CI,
     ESCALA_ESCALAR,
+    ESCALA_V_SCALE,
     ESCALA_T_DIRECTO,
     ESCALA_T_INVERSO,
-    ESCALA_PERCENTIL,
+    ESCALA_PERCENTIL_DIRECTO,
+    ESCALA_PERCENTIL_INVERSO,
     ESCALA_Z_DIRECTO,
     ESCALA_BRUTO,
 ]
@@ -21,9 +26,11 @@ ESCALAS_DISPONIBLES = [
 ESCALAS_CALCULADORA = [
     ESCALA_ESCALAR,
     ESCALA_CI,
+    ESCALA_V_SCALE,
     ESCALA_T_DIRECTO,
     ESCALA_T_INVERSO,
-    ESCALA_PERCENTIL,
+    ESCALA_PERCENTIL_DIRECTO,
+    ESCALA_PERCENTIL_INVERSO,
 ]
 
 MODELOS_INFORME = [
@@ -75,6 +82,7 @@ CATALOGO_SUBPRUEBAS = {
         ("WISC-V - Índice de Velocidad de Procesamiento (IVP)", ESCALA_CI),
         ("WISC-V - Índice de Razonamiento Cuantitativo (IRC)", ESCALA_CI),
         ("WISC-V - Índice de Memoria de Trabajo Auditiva (IMTA)", ESCALA_CI),
+        ("WISC-V - Índice No Verbal (INV)", ESCALA_CI),
         ("WISC-V - Índice de Competencia Cognitiva (ICC)", ESCALA_CI),
         ("WISC-V - Semejanzas", ESCALA_ESCALAR),
         ("WISC-V - Vocabulario", ESCALA_ESCALAR),
@@ -83,13 +91,16 @@ CATALOGO_SUBPRUEBAS = {
         ("WISC-V - Matrices", ESCALA_ESCALAR),
         ("WISC-V - Balanzas", ESCALA_ESCALAR),
         ("WISC-V - Dígitos", ESCALA_ESCALAR),
+        ("WISC-V - Retención de Dígitos (Orden inverso)", ESCALA_ESCALAR),
         ("WISC-V - Span de Dibujos", ESCALA_ESCALAR),
+        ("WISC-V - Letras y Números", ESCALA_ESCALAR),
         ("WISC-V - Claves", ESCALA_ESCALAR),
         ("WISC-V - Búsqueda de Símbolos", ESCALA_ESCALAR),
         ("WISC-V - Aritmética", ESCALA_ESCALAR),
     ],
     "WPPSI-IV": [
         ("WPPSI-IV - Coeficiente Intelectual Total (CIT)", ESCALA_CI),
+        ("WPPSI-IV - Índice de Capacidad General (ICG)", ESCALA_CI),
         ("WPPSI-IV - Índice de Comprensión Verbal (ICV)", ESCALA_CI),
         ("WPPSI-IV - Índice Visoespacial (IVE)", ESCALA_CI),
         ("WPPSI-IV - Índice de Razonamiento Fluido (IRF)", ESCALA_CI),
@@ -108,6 +119,7 @@ CATALOGO_SUBPRUEBAS = {
     ],
     "WAIS-IV": [
         ("WAIS-IV - Coeficiente Intelectual Total (CIT)", ESCALA_CI),
+        ("WAIS-IV - Índice de Capacidad General (ICG)", ESCALA_CI),
         ("WAIS-IV - Índice de Comprensión Verbal (ICV)", ESCALA_CI),
         ("WAIS-IV - Índice de Razonamiento Perceptivo (IRP)", ESCALA_CI),
         ("WAIS-IV - Índice de Memoria de Trabajo (IMT)", ESCALA_CI),
@@ -125,8 +137,13 @@ CATALOGO_SUBPRUEBAS = {
         ("WAIS-IV - Clave de Números", ESCALA_ESCALAR),
     ],
     "NEPSY-II": [
+        ("NEPSY-II - Atención Visual", ESCALA_ESCALAR),
         ("NEPSY-II - Atención Auditiva", ESCALA_ESCALAR),
+        ("NEPSY-II - Atención Auditiva: errores de omisión", ESCALA_ESCALAR),
+        ("NEPSY-II - Atención Auditiva: errores de comisión", ESCALA_ESCALAR),
         ("NEPSY-II - Flexibilidad Cognitiva (Cambio de criterio)", ESCALA_ESCALAR),
+        ("NEPSY-II - Flexibilidad Cognitiva: errores de omisión", ESCALA_ESCALAR),
+        ("NEPSY-II - Flexibilidad Cognitiva: errores de comisión", ESCALA_ESCALAR),
         ("NEPSY-II - Estatua (Control Inhibitorio)", ESCALA_ESCALAR),
         ("NEPSY-II - Fluidez de Diseños", ESCALA_ESCALAR),
         ("NEPSY-II - Procesamiento Fonológico", ESCALA_ESCALAR),
@@ -138,6 +155,10 @@ CATALOGO_SUBPRUEBAS = {
         ("NEPSY-II - Precisión Visomotora", ESCALA_ESCALAR),
     ],
     "TOMAL": [
+        ("TOMAL - Índice de Memoria Verbal (IMV)", ESCALA_CI),
+        ("TOMAL - Índice de Memoria No Verbal (IMNV)", ESCALA_CI),
+        ("TOMAL - Índice de Memoria Compuesta (IMC)", ESCALA_CI),
+        ("TOMAL - Índice de Recuerdo Demorado (IRD)", ESCALA_CI),
         ("TOMAL - Recuerdo Selectivo de Palabras (Inmediato)", ESCALA_ESCALAR),
         ("TOMAL - Recuerdo Selectivo de Palabras (Demorado)", ESCALA_ESCALAR),
         ("TOMAL - Memoria Visual Abstracta", ESCALA_ESCALAR),
@@ -163,6 +184,7 @@ CATALOGO_SUBPRUEBAS = {
         ("CPT-II - Comisiones (Impulsividad)", ESCALA_T_INVERSO),
         ("CPT-II - Tiempo de Reacción (Hit RT)", ESCALA_T_INVERSO),
         ("CPT-II - Variabilidad / Consistencia (Hit RT Std Error)", ESCALA_T_INVERSO),
+        ("CPT-II - Detectabilidad (d')", ESCALA_T_INVERSO),
         ("CPT-II - Perseveraciones", ESCALA_T_INVERSO),
     ],
     "Nesplora Aula": [
@@ -173,10 +195,10 @@ CATALOGO_SUBPRUEBAS = {
         ("Nesplora Aula - Actividad Motora", ESCALA_T_INVERSO),
     ],
     "Figura Compleja de Rey": [
-        ("Figura Compleja de Rey - Copia", ESCALA_T_DIRECTO),
-        ("Figura Compleja de Rey - Memoria Inmediata (3 min)", ESCALA_T_DIRECTO),
-        ("Figura Compleja de Rey - Memoria Diferida (30 min)", ESCALA_T_DIRECTO),
-        ("Figura Compleja de Rey - Reconocimiento", ESCALA_T_DIRECTO),
+        ("Figura Compleja de Rey - Copia", ESCALA_PERCENTIL_DIRECTO),
+        ("Figura Compleja de Rey - Memoria Inmediata (3 min)", ESCALA_PERCENTIL_DIRECTO),
+        ("Figura Compleja de Rey - Memoria Diferida (30 min)", ESCALA_PERCENTIL_DIRECTO),
+        ("Figura Compleja de Rey - Reconocimiento", ESCALA_PERCENTIL_DIRECTO),
     ],
     "WCST": [
         ("WCST - Categorías Completadas", ESCALA_T_DIRECTO),
@@ -226,6 +248,8 @@ CATALOGO_SUBPRUEBAS = {
         ("Woodcock-Muñoz - Problemas Aplicados", ESCALA_BRUTO),
         ("Woodcock-Muñoz - Identificación de Letras y Palabras", ESCALA_BRUTO),
         ("Woodcock-Muñoz - Comprensión de Textos", ESCALA_BRUTO),
+        ("Woodcock-Muñoz - Dictado", ESCALA_BRUTO),
+        ("Woodcock-Muñoz - Completamiento de Oraciones", ESCALA_BRUTO),
     ],
     "TEMA-3": [
         ("TEMA-3 - Índice de Competencia Matemática", ESCALA_CI),
@@ -250,7 +274,16 @@ CATALOGO_SUBPRUEBAS = {
         ("SNAP-IV - Indicadores de Hiperactividad / Impulsividad", ESCALA_BRUTO),
     ],
     "Escala Durand": [
-        ("Escala Motivacional de Durand - Perfil", ESCALA_BRUTO),
+        ("Escala Durand - Sensorial", ESCALA_BRUTO),
+        ("Escala Durand - Escape", ESCALA_BRUTO),
+        ("Escala Durand - Atención", ESCALA_BRUTO),
+        ("Escala Durand - Tangible", ESCALA_BRUTO),
+    ],
+    "Escala de Autoestima": [
+        ("Escala de Autoestima - Académica", ESCALA_BRUTO),
+        ("Escala de Autoestima - Corporal", ESCALA_BRUTO),
+        ("Escala de Autoestima - Familiar", ESCALA_BRUTO),
+        ("Escala de Autoestima - Social", ESCALA_BRUTO),
     ],
     "DIVA-5": [
         ("DIVA-5 - Criterios Déficit de Atención (Adultez / Infancia)", ESCALA_BRUTO),
@@ -322,7 +355,153 @@ BANCO_SUGERENCIAS = {
         "Apoyos visuales y funciones ejecutivas": "Implementar apoyos visuales, agendas anticipatorias, uso de calendarios a la vista y listas de chequeo (checklists) para la organización de materiales, entregas y armado de la mochila.",
         "Pausas activas y regulación motora": "Permitir breves pausas activas programadas y funcionales dentro del ámbito escolar (ej. borrar el pizarrón, repartir material o llevar un recado) cuando se observe fatiga cognitiva o inquietud motora.",
         "Adaptaciones en Lectoescritura": "Priorizar la evaluación oral o el uso de formatos estructurados (opción múltiple, unir con flechas, completar palabras clave) para evitar que la fatiga lectora o grafomotora penalice la demostración de conocimientos. No exponer a la lectura en voz alta frente al grupo sin preparación previa.",
+        "Velocidad lectora y apoyos de lectura": "Favorecer el acceso anticipado a textos y guías de estudio, utilizar marcalibros o tiras de color para guiar el seguimiento visual de renglones, incorporar audiolibros y entrenar fluidez mediante lecturas repetidas y lectura compartida.",
+        "Evitar copia excesiva y contemplar ortografía": "Facilitar material impreso o digital para evitar la copia excesiva del pizarrón; no penalizar los errores ortográficos cuando la ortografía no sea el objetivo evaluado y habilitar procesador de texto con corrector ortográfico.",
         "Adaptaciones en Matemática y Cálculo": "Permitir el uso de apoyos concretos, tabla pitagórica, grillas numéricas o calculadora en resoluciones complejas, a fin de no penalizar el razonamiento lógico-matemático por fallas en la memoria operativa o en la automatización del cálculo.",
         "Refuerzo positivo y motivación": "Reforzar positivamente sus logros y el esfuerzo sostenido durante el proceso de trabajo, evitando la sobrecorrección punitiva frente al error para preservar su autoestima académica.",
     },
 }
+
+# Presets de 1 clic para acelerar la carga clínica
+PRESETS_BATERIAS = {
+    "Desempeño Cognitivo (WISC-V)": {
+        "modelos": ["Evaluación Neuropsicológica (Versión Desempeño Cognitivo - Wechsler)"],
+        "pruebas": ["WISC-V"],
+    },
+    "Neuropsicológica Infantil Completa": {
+        "modelos": [
+            "Evaluación Neuropsicológica Completa",
+            "Cuestionarios Conductuales (SNAP-IV / BRIEF / Durand / Autoestima)",
+        ],
+        "pruebas": [
+            "WISC-V",
+            "NEPSY-II",
+            "TOMAL",
+            "WRAML",
+            "CPT-II",
+            "Stroop",
+            "Trail Making Test (TMT)",
+            "Figura Compleja de Rey",
+            "SNAP-IV",
+            "BRIEF",
+        ],
+    },
+    "Psicopedagógica Infantil": {
+        "modelos": ["Evaluación Psicopedagógica Infantil"],
+        "pruebas": [
+            "PROLEC-R / PROLEC-SE-R",
+            "Woodcock-Muñoz",
+            "Ortografía Feldman",
+            "NEPSY-II",
+            "TEMA-3",
+        ],
+    },
+    "Adultos / TDAH": {
+        "modelos": [
+            "Evaluación Neuropsicológica Completa",
+            "DIVA-5 (Adultos)",
+        ],
+        "pruebas": [
+            "WAIS-IV",
+            "CPT-II",
+            "Stroop",
+            "Trail Making Test (TMT)",
+            "RAVLT",
+            "WCST",
+            "DIVA-5",
+        ],
+    },
+}
+
+CONDUCTA_ACORDE_DEFAULTS = {
+    "obs_vinculo": "Adecuado",
+    "obs_predisp": "Buena",
+    "obs_consignas": "Comprende adecuadamente",
+    "obs_desatencion": "Sostiene el foco adecuadamente",
+    "obs_motora": "Adecuada (Estable en su silla)",
+    "obs_impulsividad": "Reflexivo y organizado",
+    "obs_frustracion": "Adecuada",
+    "obs_ansiedad": "No se observa",
+    "obs_ritmo": "Adecuado y sostenido",
+    "obs_lenguaje": "Adecuado",
+}
+
+PERFILES_RECOMENDACIONES = {
+    "Combinado o impulsivo": {
+        "terapeuticas": [
+            "Devolución médica",
+            "Tratamiento Psicopedagógico",
+            "Psicoterapia Cognitivo-Conductual (TCC) y Orientación a Padres",
+            "Control evolutivo / Reevaluación",
+        ],
+        "escolares": [
+            "Ubicación y control de distractores",
+            "Segmentación de consignas",
+            "Gestión del tiempo y fragmentación de tareas",
+            "Apoyos visuales y funciones ejecutivas",
+            "Pausas activas y regulación motora",
+            "Refuerzo positivo y motivación",
+        ],
+    },
+    "Predominantemente inatento": {
+        "terapeuticas": [
+            "Devolución médica",
+            "Tratamiento Psicopedagógico",
+            "Control evolutivo / Reevaluación",
+        ],
+        "escolares": [
+            "Ubicación y control de distractores",
+            "Segmentación de consignas",
+            "Gestión del tiempo y fragmentación de tareas",
+            "Apoyos visuales y funciones ejecutivas",
+            "Refuerzo positivo y motivación",
+        ],
+    },
+    "Dentro de lo esperado con leves vulnerabilidades": {
+        "terapeuticas": [
+            "Devolución médica",
+            "Control evolutivo / Reevaluación",
+        ],
+        "escolares": [
+            "Segmentación de consignas",
+            "Apoyos visuales y funciones ejecutivas",
+            "Refuerzo positivo y motivación",
+        ],
+    },
+    "Aprendizaje (DEA)": {
+        "terapeuticas": [
+            "Devolución médica",
+            "Tratamiento Psicopedagógico",
+            "Neurolingüística / Fonoaudiología",
+            "Control evolutivo / Reevaluación",
+        ],
+        "escolares": [
+            "Gestión del tiempo y fragmentación de tareas",
+            "Adaptaciones en Lectoescritura",
+            "Velocidad lectora y apoyos de lectura",
+            "Evitar copia excesiva y contemplar ortografía",
+            "Adaptaciones en Matemática y Cálculo",
+            "Refuerzo positivo y motivación",
+        ],
+    },
+}
+
+CLAUSULA_CONFIDENCIAL_DEFAULT = (
+    "Los resultados aquí descriptos son complementarios de las entrevistas clínicas realizadas por el "
+    "profesional tratante, carecen de cualquier valor judicial y deben ser interpretados dentro del "
+    "contexto clínico integral. El presente informe es estrictamente confidencial y su acceso queda "
+    "limitado al paciente, sus responsables legales y los profesionales tratantes."
+)
+
+VINELAND_FORMA_B_CATEGORIAS = [
+    (0, 20, "Retardo social profundo"),
+    (21, 35, "Retardo social severo"),
+    (36, 51, "Retardo social moderado"),
+    (52, 69, "Retardo social leve"),
+    (70, 79, "Fronterizo"),
+    (80, 89, "Normal inferior"),
+    (90, 109, "Normal promedio"),
+    (110, 119, "Normal alto"),
+    (120, 129, "Superior"),
+    (130, 999, "Muy superior"),
+]

@@ -1,4 +1,4 @@
-"""Exportador institucional a Microsoft Word (.docx) con parser Markdown completo."""
+"""Exportador institucional a Microsoft Word (.docx) con Grilla Visual Z y parser Markdown."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Mm, Pt, RGBColor
 
-from psicometria import categoria_color_rango
+from catalogo_clinico import CLAUSULA_CONFIDENCIAL_DEFAULT
+from psicometria import TERCIOS_GRILLA_Z, categoria_color_rango, redondear_z_a_tercio
 
 COLOR_TEXTO_BASE = RGBColor(0x1E, 0x1E, 0x1E)
 COLOR_AZUL_INSTITUCIONAL = RGBColor(0x1B, 0x36, 0x5D)
@@ -33,7 +34,7 @@ ESTILOS_RANGO_TABLA: dict[str, tuple[str, RGBColor, bool]] = {
     "normal": ("E8F8F5", RGBColor(0x14, 0x5A, 0x32), False),
     "tendencia_alta": ("EBF5FB", RGBColor(0x1B, 0x4F, 0x72), False),
     "normal_alto": ("EBF5FB", RGBColor(0x1B, 0x4F, 0x72), False),
-    "superior": ("EBF5FB", RGBColor(0x1B, 0x4F, 0x72), True),
+    "superior": ("D6EAF8", RGBColor(0x1B, 0x4F, 0x72), True),
     "cualitativo": ("F4F6F7", RGBColor(0x42, 0x49, 0x49), False),
 }
 
@@ -212,6 +213,11 @@ def _renderizar_tabla(doc: Document, headers: list[str], rows: list[list[str]]) 
         return
 
     num_cols = len(headers)
+    es_ancha = num_cols >= 10
+    fsize_hdr = Pt(7.5) if es_ancha else Pt(9.5)
+    fsize_cell = Pt(7.0) if es_ancha else Pt(9.0)
+    margenes = (35, 35, 35, 35) if es_ancha else (75, 75, 110, 110)
+
     table = doc.add_table(rows=1, cols=num_cols)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = True
@@ -227,7 +233,7 @@ def _renderizar_tabla(doc: Document, headers: list[str], rows: list[list[str]]) 
         cell = hdr_row.cells[i]
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         _set_cell_shading(cell, HEX_AZUL_CABECERA)
-        _set_cell_margins(cell)
+        _set_cell_margins(cell, *margenes)
         p = cell.paragraphs[0]
         p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(0)
@@ -235,7 +241,7 @@ def _renderizar_tabla(doc: Document, headers: list[str], rows: list[list[str]]) 
             p,
             _limpiar_markdown_simple(h_text),
             bold=True,
-            font_size=Pt(9.5),
+            font_size=fsize_hdr,
             color=COLOR_BLANCO,
         )
 
@@ -248,7 +254,7 @@ def _renderizar_tabla(doc: Document, headers: list[str], rows: list[list[str]]) 
         for col_idx, cell_text in enumerate(padded):
             cell = row_obj.cells[col_idx]
             cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            _set_cell_margins(cell)
+            _set_cell_margins(cell, *margenes)
 
             p = cell.paragraphs[0]
             p.paragraph_format.space_before = Pt(0)
@@ -264,7 +270,7 @@ def _renderizar_tabla(doc: Document, headers: list[str], rows: list[list[str]]) 
                     p,
                     cell_text,
                     bold=es_negrita,
-                    font_size=Pt(9.0),
+                    font_size=fsize_cell,
                     color=txt_color,
                 )
             else:
@@ -274,13 +280,158 @@ def _renderizar_tabla(doc: Document, headers: list[str], rows: list[list[str]]) 
                     p,
                     cell_text,
                     bold=False,
-                    font_size=Pt(9.0),
+                    font_size=fsize_cell,
                     color=COLOR_TEXTO_BASE,
                 )
 
     espacio = doc.add_paragraph()
     espacio.paragraph_format.space_before = Pt(0)
     espacio.paragraph_format.space_after = Pt(4)
+
+
+def _agregar_grilla_visual_z(doc: Document, df_puntajes: pd.DataFrame) -> None:
+    """Construye la Grilla Visual Z de 22 columnas (-3 a +3 en tercios con marca X)."""
+    if df_puntajes is None or df_puntajes.empty:
+        return
+
+    filas_validas: list[tuple[str, str, float, str]] = []
+    for _, row in df_puntajes.iterrows():
+        z_raw = str(row.get("Puntaje Z") or "").strip()
+        if not z_raw or z_raw in ("N/A", "-"):
+            continue
+        try:
+            z_val = float(z_raw.replace(",", "."))
+        except ValueError:
+            continue
+        nombre = str(row.get("Dominio / Prueba / Subtest") or "").strip()
+        punt = str(row.get("Puntaje Obtenido") or "-").strip()
+        rango = str(row.get("Rango Clínico") or "").strip()
+        filas_validas.append((nombre, punt, z_val, rango))
+
+    if not filas_validas:
+        return
+
+    _agregar_heading_personalizado(doc, 2, "Grilla Cuantitativa Visual (Escala Z: -3 a +3)")
+
+    num_cols = 22
+    anchos_cm = [4.5, 1.1, 1.0] + [0.526] * 19
+    table = doc.add_table(rows=2, cols=num_cols)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    _set_table_borders(table)
+
+    for col_idx, ancho in enumerate(anchos_cm):
+        table.columns[col_idx].width = Cm(ancho)
+
+    # Fila 0: encabezados agrupados
+    row0 = table.rows[0]
+    _set_repeat_header(row0)
+    _prevent_row_split(row0)
+
+    grupos = [
+        (0, 2, "Prueba / Puntajes", HEX_AZUL_CABECERA, COLOR_BLANCO),
+        (3, 5, "Déficit", "FADBD8", RGBColor(0x92, 0x2B, 0x21)),
+        (6, 8, "Dificultad", "FDEBD0", RGBColor(0x9C, 0x64, 0x0C)),
+        (9, 15, "Normal", "E8F8F5", RGBColor(0x14, 0x5A, 0x32)),
+        (16, 18, "Normal Alto", "EBF5FB", RGBColor(0x1B, 0x4F, 0x72)),
+        (19, 21, "Superior", "D6EAF8", RGBColor(0x1B, 0x4F, 0x72)),
+    ]
+    for ini, fin, titulo_grp, bg_hex, txt_col in grupos:
+        celda = row0.cells[ini]
+        if fin > ini:
+            celda = celda.merge(row0.cells[fin])
+        celda.width = Cm(sum(anchos_cm[ini : fin + 1]))
+        celda.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _set_cell_shading(celda, bg_hex)
+        _set_cell_margins(celda, top=35, bottom=35, left=20, right=20)
+        p = celda.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+        agregar_runs_inline(p, titulo_grp, bold=True, font_size=Pt(7.0), color=txt_col)
+
+    # Fila 1: sub-encabezado con los 19 tercios
+    row1 = table.rows[1]
+    _set_repeat_header(row1)
+    _prevent_row_split(row1)
+
+    etiquetas_sub = ["Prueba / Subtest", "Punt.", "Z"] + [
+        f"{t:g}".replace(".", ",") for t in TERCIOS_GRILLA_Z
+    ]
+    for col_idx, texto_sub in enumerate(etiquetas_sub):
+        celda = row1.cells[col_idx]
+        celda.width = Cm(anchos_cm[col_idx])
+        celda.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _set_cell_shading(celda, HEX_AZUL_CABECERA)
+        _set_cell_margins(celda, top=30, bottom=30, left=15, right=15)
+        p = celda.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT if col_idx == 0 else WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+        agregar_runs_inline(
+            p,
+            texto_sub,
+            bold=True,
+            font_size=Pt(6.0) if col_idx >= 3 else Pt(7.0),
+            color=COLOR_BLANCO,
+        )
+
+    hubo_hit_rt_rapido = False
+    for row_idx, (nombre, punt, z_val, rango) in enumerate(filas_validas):
+        row_obj = table.add_row()
+        _prevent_row_split(row_obj)
+        bg_alterno = HEX_FILA_ALTERNA if row_idx % 2 == 1 else None
+
+        tercio = redondear_z_a_tercio(z_val)
+        col_marca = 3 + TERCIOS_GRILLA_Z.index(tercio)
+        es_rapido = "atipico rapido" in rango.lower() or "atípico rápido" in rango.lower()
+        if es_rapido:
+            hubo_hit_rt_rapido = True
+            marca = "R*"
+            cat = "dificultad"
+        else:
+            marca = "X"
+            cat = categoria_color_rango(rango)
+
+        bg_marca, txt_marca, _ = ESTILOS_RANGO_TABLA.get(cat, ("E8F8F5", COLOR_TEXTO_BASE, True))
+
+        valores_fijos = (nombre, punt, f"{z_val:+.2f}")
+        for col_idx in range(num_cols):
+            celda = row_obj.cells[col_idx]
+            celda.width = Cm(anchos_cm[col_idx])
+            celda.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            _set_cell_margins(celda, top=30, bottom=30, left=15 if col_idx >= 3 else 45, right=15 if col_idx >= 3 else 45)
+            p = celda.paragraphs[0]
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(0)
+
+            if col_idx < 3:
+                if bg_alterno:
+                    _set_cell_shading(celda, bg_alterno)
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT if col_idx == 0 else WD_ALIGN_PARAGRAPH.CENTER
+                agregar_runs_inline(p, valores_fijos[col_idx], font_size=Pt(7.5), color=COLOR_TEXTO_BASE)
+            elif col_idx == col_marca:
+                _set_cell_shading(celda, bg_marca)
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                agregar_runs_inline(p, marca, bold=True, font_size=Pt(7.5), color=txt_marca)
+            elif bg_alterno:
+                _set_cell_shading(celda, bg_alterno)
+
+    if hubo_hit_rt_rapido:
+        p_nota = doc.add_paragraph()
+        p_nota.paragraph_format.space_before = Pt(3)
+        p_nota.paragraph_format.space_after = Pt(4)
+        agregar_runs_inline(
+            p_nota,
+            "Nota — R*: Tiempo de reacción atípicamente rápido (estilo impulsivo); no representa desempeño superior.",
+            italic=True,
+            font_size=Pt(8.0),
+            color=COLOR_GRIS_SUAVE,
+        )
+    else:
+        espacio = doc.add_paragraph()
+        espacio.paragraph_format.space_before = Pt(0)
+        espacio.paragraph_format.space_after = Pt(4)
 
 
 def _agregar_heading_personalizado(doc: Document, nivel: int, texto: str) -> None:
@@ -407,14 +558,22 @@ def agregar_markdown_a_doc(doc: Document, texto_markdown: str, omitir_primer_h1:
             i += 1
             continue
 
-        # 6. Citas (> ...)
+        # 6. Citas (> ...), soportando viñetas anidadas (> * / > -)
         if stripped.startswith(">"):
             contenido_cita = stripped.lstrip(">").strip()
-            p_cita = doc.add_paragraph()
-            p_cita.paragraph_format.left_indent = Cm(0.8)
-            p_cita.paragraph_format.space_before = Pt(3)
-            p_cita.paragraph_format.space_after = Pt(5)
-            agregar_runs_inline(p_cita, contenido_cita, italic=True, color=COLOR_GRIS_SUAVE)
+            m_cita_bullet = _BULLET_RE.match(contenido_cita)
+            if m_cita_bullet:
+                p_item = doc.add_paragraph(style="List Bullet")
+                p_item.paragraph_format.space_before = Pt(1)
+                p_item.paragraph_format.space_after = Pt(3)
+                p_item.paragraph_format.line_spacing = 1.15
+                agregar_runs_inline(p_item, m_cita_bullet.group(2))
+            else:
+                p_cita = doc.add_paragraph()
+                p_cita.paragraph_format.left_indent = Cm(0.8)
+                p_cita.paragraph_format.space_before = Pt(3)
+                p_cita.paragraph_format.space_after = Pt(5)
+                agregar_runs_inline(p_cita, contenido_cita, italic=True, color=COLOR_GRIS_SUAVE)
             i += 1
             continue
 
@@ -428,7 +587,11 @@ def agregar_markdown_a_doc(doc: Document, texto_markdown: str, omitir_primer_h1:
         i += 1
 
 
-def _configurar_documento_base(doc: Document, datos_filiacion: dict | None = None) -> None:
+def _configurar_documento_base(
+    doc: Document,
+    datos_filiacion: dict | None = None,
+    membrete_institucional: str = "",
+) -> None:
     for section in doc.sections:
         section.page_width = Mm(210)
         section.page_height = Mm(297)
@@ -443,6 +606,7 @@ def _configurar_documento_base(doc: Document, datos_filiacion: dict | None = Non
         p_hdr.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         nombre = ((datos_filiacion or {}).get("nombre") or "").strip()
         fecha = ((datos_filiacion or {}).get("fecha_eval") or "").strip()
+        prefijo = (membrete_institucional or "").strip()
         if nombre and fecha:
             texto_hdr = f"Informe Clínico — {nombre} ({fecha})"
         elif nombre:
@@ -451,6 +615,9 @@ def _configurar_documento_base(doc: Document, datos_filiacion: dict | None = Non
             texto_hdr = f"Informe de Evaluación Neuropsicológica ({fecha})"
         else:
             texto_hdr = "Informe de Evaluación Neuropsicológica"
+        if prefijo:
+            texto_hdr = f"{prefijo} | {texto_hdr}"
+
         r_hdr = p_hdr.add_run(texto_hdr)
         r_hdr.font.name = "Arial"
         r_hdr.font.size = Pt(8.5)
@@ -523,6 +690,11 @@ def _contiene_firma(texto_markdown: str, firma_profesional: str) -> bool:
     return False
 
 
+def _contiene_clausula_confidencial(texto_markdown: str) -> bool:
+    ultimas = " ".join((texto_markdown or "").lower().splitlines()[-12:])
+    return "carecen de cualquier valor judicial" in ultimas or "estrictamente confidencial" in ultimas
+
+
 def generar_docx_bytes(
     texto_markdown: str,
     datos_filiacion: dict | None = None,
@@ -530,11 +702,27 @@ def generar_docx_bytes(
     titulo_informe: str = "INFORME DE EVALUACIÓN NEUROPSICOLÓGICA Y PSICOPEDAGÓGICA",
     incluir_tabla_filiacion: bool = False,
     incluir_tabla_z: bool = False,
+    incluir_grilla_visual_z: bool = False,
+    membrete_institucional: str = "",
+    incluir_clausula_confidencial: bool = False,
     firma_profesional: str = "",
 ) -> bytes:
     """Genera un documento Word (.docx) institucional en memoria a partir de Markdown."""
     doc = Document()
-    _configurar_documento_base(doc, datos_filiacion=datos_filiacion)
+    _configurar_documento_base(
+        doc,
+        datos_filiacion=datos_filiacion,
+        membrete_institucional=membrete_institucional,
+    )
+
+    membrete = (membrete_institucional or "").strip()
+    if membrete:
+        p_mem = doc.add_paragraph()
+        p_mem.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_mem.paragraph_format.space_before = Pt(0)
+        p_mem.paragraph_format.space_after = Pt(6)
+        _set_paragraph_bottom_border(p_mem)
+        agregar_runs_inline(p_mem, membrete, bold=True, font_size=Pt(9.5), color=COLOR_AZUL_INSTITUCIONAL)
 
     texto_limpio = _desenvolver_bloque_codigo_markdown(texto_markdown)
     primera_linea = next((ln.strip() for ln in texto_limpio.splitlines() if ln.strip()), "")
@@ -548,6 +736,9 @@ def generar_docx_bytes(
 
     if incluir_tabla_z and df_puntajes is not None and not df_puntajes.empty:
         _agregar_tabla_z_dataframe(doc, df_puntajes)
+
+    if incluir_grilla_visual_z and df_puntajes is not None and not df_puntajes.empty:
+        _agregar_grilla_visual_z(doc, df_puntajes)
 
     agregar_markdown_a_doc(doc, texto_limpio, omitir_primer_h1=incluir_tabla_filiacion)
 
@@ -568,6 +759,19 @@ def generar_docx_bytes(
         p_firma.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p_firma.paragraph_format.space_before = Pt(0)
         agregar_runs_inline(p_firma, firma_limpia, bold=True, font_size=Pt(10.0))
+
+    if incluir_clausula_confidencial and not _contiene_clausula_confidencial(texto_limpio):
+        p_conf = doc.add_paragraph()
+        p_conf.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        p_conf.paragraph_format.space_before = Pt(14)
+        p_conf.paragraph_format.space_after = Pt(0)
+        agregar_runs_inline(
+            p_conf,
+            CLAUSULA_CONFIDENCIAL_DEFAULT,
+            italic=True,
+            font_size=Pt(8.5),
+            color=COLOR_GRIS_SUAVE,
+        )
 
     buffer = io.BytesIO()
     doc.save(buffer)

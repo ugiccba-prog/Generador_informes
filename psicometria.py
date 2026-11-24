@@ -1,4 +1,4 @@
-"""Cálculos psicométricos, baremos Z, percentiles, edad exacta y utilidades de archivo."""
+"""Cálculos psicométricos, baremos Z, percentiles, métricas derivadas y utilidades."""
 
 from __future__ import annotations
 
@@ -13,10 +13,13 @@ from catalogo_clinico import (
     ESCALA_BRUTO,
     ESCALA_CI,
     ESCALA_ESCALAR,
-    ESCALA_PERCENTIL,
+    ESCALA_PERCENTIL_DIRECTO,
+    ESCALA_PERCENTIL_INVERSO,
     ESCALA_T_DIRECTO,
     ESCALA_T_INVERSO,
+    ESCALA_V_SCALE,
     ESCALA_Z_DIRECTO,
+    VINELAND_FORMA_B_CATEGORIAS,
 )
 
 COLUMNAS_PROCESADAS = [
@@ -28,7 +31,46 @@ COLUMNAS_PROCESADAS = [
     "Notas",
 ]
 
+TERCIOS_GRILLA_Z = (
+    -3.0,
+    -2.67,
+    -2.33,
+    -2.0,
+    -1.67,
+    -1.33,
+    -1.0,
+    -0.67,
+    -0.33,
+    0.0,
+    0.33,
+    0.67,
+    1.0,
+    1.33,
+    1.67,
+    2.0,
+    2.33,
+    2.67,
+    3.0,
+)
+
 _NORMAL_DIST = statistics.NormalDist(0.0, 1.0)
+
+
+def _normalizar_texto(texto: str) -> str:
+    sin_tildes = "".join(
+        c for c in unicodedata.normalize("NFD", texto or "") if unicodedata.category(c) != "Mn"
+    )
+    return re.sub(r"\s+", " ", sin_tildes).strip().lower()
+
+
+def es_hit_rt(nombre_subtest: str) -> bool:
+    """Detecta si el subtest mide velocidad de reacción (Hit RT / TR), excluyendo variabilidad."""
+    norm = _normalizar_texto(nombre_subtest)
+    if not norm:
+        return False
+    if "variabilidad" in norm or "std error" in norm or "error estandar" in norm:
+        return False
+    return "hit rt" in norm or "tiempo de reaccion" in norm
 
 
 def clasificar_z(z: float) -> str:
@@ -56,8 +98,18 @@ def clasificar_z(z: float) -> str:
     return "Superior"
 
 
-def calcular_z_y_rango(valor: float, tipo_escala: str) -> tuple[float | None, str]:
-    """Convierte un puntaje bruto/estándar/percentil a puntaje Z y rango clínico."""
+def redondear_z_a_tercio(z: float) -> float:
+    """Ubica un puntaje Z en el tercio más cercano dentro de la grilla [-3, +3]."""
+    z_clamp = max(-3.0, min(3.0, float(z)))
+    return min(TERCIOS_GRILLA_Z, key=lambda t: (abs(t - z_clamp), abs(t)))
+
+
+def calcular_z_y_rango(
+    valor: float,
+    tipo_escala: str,
+    nombre_subtest: str = "",
+) -> tuple[float | None, str]:
+    """Convierte un puntaje estándar, percentil o v-scale a puntaje Z y rango clínico."""
     if tipo_escala == ESCALA_BRUTO:
         return None, "Puntaje Bruto / Cualitativo"
 
@@ -73,14 +125,20 @@ def calcular_z_y_rango(valor: float, tipo_escala: str) -> tuple[float | None, st
         z = (val - 100.0) / 15.0
     elif tipo_escala == ESCALA_ESCALAR:
         z = (val - 10.0) / 3.0
+    elif tipo_escala == ESCALA_V_SCALE:
+        z = (val - 15.0) / 3.0
     elif tipo_escala == ESCALA_T_DIRECTO:
         z = (val - 50.0) / 10.0
     elif tipo_escala == ESCALA_T_INVERSO:
         z = (50.0 - val) / 10.0
-    elif tipo_escala == ESCALA_PERCENTIL:
+    elif tipo_escala in (ESCALA_PERCENTIL_DIRECTO, "Percentil (Pc 1 a 99)"):
         if val < 0.01 or val > 99.99:
             return None, "Percentil fuera de rango (1-99)"
         z = _NORMAL_DIST.inv_cdf(val / 100.0)
+    elif tipo_escala == ESCALA_PERCENTIL_INVERSO:
+        if val < 0.01 or val > 99.99:
+            return None, "Percentil fuera de rango (1-99)"
+        z = _NORMAL_DIST.inv_cdf((100.0 - val) / 100.0)
     elif tipo_escala == ESCALA_Z_DIRECTO:
         z = val
     else:
@@ -90,14 +148,14 @@ def calcular_z_y_rango(valor: float, tipo_escala: str) -> tuple[float | None, st
     if z_round == 0:
         z_round = 0.0
 
+    # Regla clínica bidireccional: Hit RT / TR demasiado rápido (< T 40 o Pc inv <= 15) indica estilo impulsivo
+    if es_hit_rt(nombre_subtest):
+        if (tipo_escala == ESCALA_T_INVERSO and val < 40.0) or (
+            tipo_escala == ESCALA_PERCENTIL_INVERSO and val <= 15.0
+        ):
+            return z_round, "Atípico rápido (estilo impulsivo)"
+
     return z_round, clasificar_z(z_round)
-
-
-def _normalizar_texto(texto: str) -> str:
-    sin_tildes = "".join(
-        c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn"
-    )
-    return sin_tildes.strip().lower()
 
 
 def categoria_color_rango(rango: str) -> str:
@@ -108,6 +166,8 @@ def categoria_color_rango(rango: str) -> str:
     norm = _normalizar_texto(rango)
     if "fuera de rango" in norm or "invalido" in norm or "no reconocida" in norm:
         return "cualitativo"
+    if "atipico rapido" in norm or "estilo impulsivo" in norm:
+        return "dificultad"
     if "limitrofe" in norm or ("dificultad" in norm and "deficit" in norm):
         return "limitrofe_bajo"
     if "deficit" in norm:
@@ -140,7 +200,7 @@ def formatear_puntaje(valor: float) -> str:
 def _texto_limpio(valor) -> str:
     if valor is None or pd.isna(valor):
         return ""
-    return str(valor).strip()
+    return re.sub(r"\s+", " ", str(valor)).strip()
 
 
 def procesar_tabla_puntajes(df: pd.DataFrame) -> pd.DataFrame:
@@ -172,7 +232,11 @@ def procesar_tabla_puntajes(df: pd.DataFrame) -> pd.DataFrame:
             tiene_puntaje = False
 
         if tiene_puntaje and escala_item:
-            z_val, r_val = calcular_z_y_rango(puntaje_float, escala_item)
+            z_val, r_val = calcular_z_y_rango(
+                puntaje_float,
+                escala_item,
+                nombre_subtest=nombre_item,
+            )
             z_str = f"{z_val:+.2f}" if z_val is not None else "N/A"
             puntaje_str = formatear_puntaje(puntaje_float)
         elif tiene_puntaje:
@@ -196,6 +260,83 @@ def procesar_tabla_puntajes(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     return pd.DataFrame(filas_procesadas, columns=COLUMNAS_PROCESADAS)
+
+
+def calcular_stroop_golden(p: float, c: float, pc: float) -> dict | None:
+    """Calcula PC' predicho y puntaje de interferencia según fórmula de Golden."""
+    if p is None or c is None or pc is None or p <= 0 or c <= 0 or pc < 0:
+        return None
+    pc_prima = round((p * c) / (p + c), 2)
+    interferencia = round(pc - pc_prima, 2)
+    return {
+        "pc_prima": pc_prima,
+        "interferencia": interferencia,
+    }
+
+
+def calcular_tmt_metricas(tiempo_a: float, tiempo_b: float) -> dict | None:
+    """Calcula diferencia B-A y ratio B/A para aislar flexibilidad ejecutiva en TMT."""
+    if tiempo_a is None or tiempo_b is None or tiempo_a <= 0 or tiempo_b <= 0:
+        return None
+    ratio = round(tiempo_b / tiempo_a, 2)
+    return {
+        "diferencia_b_a": round(tiempo_b - tiempo_a, 2),
+        "ratio_b_a": ratio,
+        "alerta_ejecutiva": ratio > 3.0,
+    }
+
+
+def calcular_ravlt_metricas(
+    ensayos_a: list[float],
+    b1: float | None = None,
+    a6: float | None = None,
+    a7: float | None = None,
+    rec: float | None = None,
+) -> dict | None:
+    """Calcula suma A1-A5, ganancia de aprendizaje, pérdida por interferencia y retención."""
+    if not ensayos_a or len(ensayos_a) < 5:
+        return None
+    total = round(sum(float(x) for x in ensayos_a[:5]), 2)
+    a1 = float(ensayos_a[0])
+    a5 = float(ensayos_a[4])
+    res = {
+        "total_a1_a5": total,
+        "ganancia_aprendizaje": round(a5 - a1, 2),
+        "b1": b1,
+        "a6": a6,
+        "a7": a7,
+        "reconocimiento": rec,
+        "perdida_interferencia": round(a5 - float(a6), 2) if a6 is not None else None,
+        "retencion_pct": round((float(a7) / a5) * 100.0, 1) if (a7 is not None and a5 > 0) else None,
+    }
+    return res
+
+
+def calcular_vineland_forma_b(
+    edad_social_anos: float,
+    edad_cronologica_anos: float,
+) -> dict | None:
+    """Calcula el Cociente Social (CS) y la clasificación de Vineland Forma B."""
+    if (
+        edad_social_anos is None
+        or edad_cronologica_anos is None
+        or edad_social_anos <= 0
+        or edad_cronologica_anos <= 0
+    ):
+        return None
+
+    cs = round((float(edad_social_anos) / float(edad_cronologica_anos)) * 100.0, 1)
+    categoria = "Sin clasificar"
+    for minimo, maximo, nombre_cat in VINELAND_FORMA_B_CATEGORIAS:
+        if minimo <= cs <= maximo:
+            categoria = nombre_cat
+            break
+    if cs >= 130:
+        categoria = "Muy superior"
+    return {
+        "cociente_social": cs,
+        "categoria": categoria,
+    }
 
 
 def calcular_edad_exacta(fecha_nac: date, fecha_eval: date) -> tuple[int, int] | None:
