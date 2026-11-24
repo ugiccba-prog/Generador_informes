@@ -4,7 +4,13 @@ ESCALA_CI = "CI / Estándar (M=100, DE=15)"
 ESCALA_ESCALAR = "Escalar (M=10, DE=3)"
 ESCALA_T_DIRECTO = "T Directo - Mayor es mejor (M=50, DE=10)"
 ESCALA_T_INVERSO = "T Inverso - Mayor es peor/error (M=50, DE=10)"
-ESCALA_PERCENTIL = "Percentil (Pc 1 a 99)"
+ESCALA_PERCENTIL_LEGADO = "Percentil (Pc 1 a 99)"
+ESCALA_PERCENTIL_DIRECTO = "Percentil directo (mayor = mejor)"
+ESCALA_PERCENTIL_INVERSO = "Percentil inverso (mayor = peor o más errores)"
+ESCALA_PERCENTIL = ESCALA_PERCENTIL_DIRECTO
+ESCALA_T_REACCION = "T de tiempo de reacción (bidireccional)"
+ESCALA_SEGUNDOS = "Tiempo bruto (segundos)"
+ESCALA_PERCENTIL_ACUMULADO = "Porcentaje acumulado / Categoría del manual"
 ESCALA_Z_DIRECTO = "Puntaje Z directo"
 ESCALA_BRUTO = "Puntaje Bruto / Categoría (Ver Notas)"
 
@@ -13,7 +19,11 @@ ESCALAS_DISPONIBLES = [
     ESCALA_ESCALAR,
     ESCALA_T_DIRECTO,
     ESCALA_T_INVERSO,
-    ESCALA_PERCENTIL,
+    ESCALA_PERCENTIL_DIRECTO,
+    ESCALA_PERCENTIL_INVERSO,
+    ESCALA_T_REACCION,
+    ESCALA_SEGUNDOS,
+    ESCALA_PERCENTIL_ACUMULADO,
     ESCALA_Z_DIRECTO,
     ESCALA_BRUTO,
 ]
@@ -23,7 +33,8 @@ ESCALAS_CALCULADORA = [
     ESCALA_CI,
     ESCALA_T_DIRECTO,
     ESCALA_T_INVERSO,
-    ESCALA_PERCENTIL,
+    ESCALA_PERCENTIL_DIRECTO,
+    ESCALA_PERCENTIL_INVERSO,
 ]
 
 MODELOS_INFORME = [
@@ -36,30 +47,15 @@ MODELOS_INFORME = [
 ]
 
 MODELOS_GEMINI = {
-    "gemini-4-hydrogen": {
-        "label": "Gemini 4 Hydrogen (Recomendado — equilibrado y rápido)",
-        "thinking_levels": ["low", "medium", "high", "xhigh"],
-        "default_thinking": "high",
-    },
-    "gemini-4-argon": {
-        "label": "Gemini 4 Argon (Razonamiento rápido y eficiente)",
-        "thinking_levels": ["low", "medium", "high"],
-        "default_thinking": "medium",
-    },
-    "gemini-4-neon": {
-        "label": "Gemini 4 Neon (Frontera rápido — requiere tier pago)",
-        "thinking_levels": ["low", "medium", "high", "xhigh"],
-        "default_thinking": "high",
-    },
-    "gemini-4-carbon": {
-        "label": "Gemini 4 Carbon (Máxima profundidad clínica)",
+    "gemini-3.8-flash": {
+        "label": "Gemini 3.8 Flash",
         "thinking_levels": ["low", "medium", "high"],
         "default_thinking": "medium",
     },
     "gemini-3.5-flash-lite": {
-        "label": "Gemini 3.5 Flash-Lite (Ultra rápido / bajo costo)",
+        "label": "Gemini 3.5 Flash-Lite",
         "thinking_levels": ["minimal", "low", "medium", "high"],
-        "default_thinking": "medium",
+        "default_thinking": "minimal",
     },
 }
 
@@ -86,10 +82,14 @@ CATALOGO_SUBPRUEBAS = {
         ("WISC-V - Span de Dibujos", ESCALA_ESCALAR),
         ("WISC-V - Claves", ESCALA_ESCALAR),
         ("WISC-V - Búsqueda de Símbolos", ESCALA_ESCALAR),
+        ("WISC-V - Índice No Verbal (INV)", ESCALA_CI),
+        ("WISC-V - Letras y Números", ESCALA_ESCALAR),
+        ("WISC-V - Dígitos (orden inverso)", ESCALA_ESCALAR),
         ("WISC-V - Aritmética", ESCALA_ESCALAR),
     ],
     "WPPSI-IV": [
         ("WPPSI-IV - Coeficiente Intelectual Total (CIT)", ESCALA_CI),
+        ("WPPSI-IV - Índice de Capacidad General (ICG)", ESCALA_CI),
         ("WPPSI-IV - Índice de Comprensión Verbal (ICV)", ESCALA_CI),
         ("WPPSI-IV - Índice Visoespacial (IVE)", ESCALA_CI),
         ("WPPSI-IV - Índice de Razonamiento Fluido (IRF)", ESCALA_CI),
@@ -108,6 +108,7 @@ CATALOGO_SUBPRUEBAS = {
     ],
     "WAIS-IV": [
         ("WAIS-IV - Coeficiente Intelectual Total (CIT)", ESCALA_CI),
+        ("WAIS-IV - Índice de Capacidad General (ICG)", ESCALA_CI),
         ("WAIS-IV - Índice de Comprensión Verbal (ICV)", ESCALA_CI),
         ("WAIS-IV - Índice de Razonamiento Perceptivo (IRP)", ESCALA_CI),
         ("WAIS-IV - Índice de Memoria de Trabajo (IMT)", ESCALA_CI),
@@ -124,9 +125,16 @@ CATALOGO_SUBPRUEBAS = {
         ("WAIS-IV - Búsqueda de Símbolos", ESCALA_ESCALAR),
         ("WAIS-IV - Clave de Números", ESCALA_ESCALAR),
     ],
+    "NEPSY (primera edición)": [
+        ("NEPSY - Atención Visual (consignar escala de la fuente)", ESCALA_BRUTO),
+    ],
     "NEPSY-II": [
         ("NEPSY-II - Atención Auditiva", ESCALA_ESCALAR),
         ("NEPSY-II - Flexibilidad Cognitiva (Cambio de criterio)", ESCALA_ESCALAR),
+        ("NEPSY-II - Atención Auditiva, errores de omisión", ESCALA_PERCENTIL_ACUMULADO),
+        ("NEPSY-II - Atención Auditiva, errores de comisión", ESCALA_PERCENTIL_ACUMULADO),
+        ("NEPSY-II - Cambio de criterio, errores de omisión", ESCALA_PERCENTIL_ACUMULADO),
+        ("NEPSY-II - Cambio de criterio, errores de comisión", ESCALA_PERCENTIL_ACUMULADO),
         ("NEPSY-II - Estatua (Control Inhibitorio)", ESCALA_ESCALAR),
         ("NEPSY-II - Fluidez de Diseños", ESCALA_ESCALAR),
         ("NEPSY-II - Procesamiento Fonológico", ESCALA_ESCALAR),
@@ -138,6 +146,7 @@ CATALOGO_SUBPRUEBAS = {
         ("NEPSY-II - Precisión Visomotora", ESCALA_ESCALAR),
     ],
     "TOMAL": [
+        ("TOMAL - Reconocimiento de Palabras (si figura en la fuente)", ESCALA_BRUTO),
         ("TOMAL - Recuerdo Selectivo de Palabras (Inmediato)", ESCALA_ESCALAR),
         ("TOMAL - Recuerdo Selectivo de Palabras (Demorado)", ESCALA_ESCALAR),
         ("TOMAL - Memoria Visual Abstracta", ESCALA_ESCALAR),
@@ -149,34 +158,49 @@ CATALOGO_SUBPRUEBAS = {
         ("WRAML - Reconocimiento Narrativo", ESCALA_ESCALAR),
     ],
     "Stroop": [
+        ("Stroop Golden - P bruto", ESCALA_BRUTO),
+        ("Stroop Golden - C bruto", ESCALA_BRUTO),
+        ("Stroop Golden - PC bruto", ESCALA_BRUTO),
         ("Stroop - Lectura de Palabras (P)", ESCALA_T_DIRECTO),
         ("Stroop - Denominación de Colores (C)", ESCALA_T_DIRECTO),
         ("Stroop - Palabra-Color (PC)", ESCALA_T_DIRECTO),
         ("Stroop - Índice de Interferencia", ESCALA_T_DIRECTO),
     ],
     "Trail Making Test (TMT)": [
+        ("Trail Making Test - Parte A (segundos)", ESCALA_SEGUNDOS),
+        ("Trail Making Test - Parte B (segundos)", ESCALA_SEGUNDOS),
         ("Trail Making Test - Parte A (Atención Sostenida/Selectiva)", ESCALA_T_DIRECTO),
         ("Trail Making Test - Parte B (Atención Dividida/Flexibilidad)", ESCALA_T_DIRECTO),
     ],
     "CPT-II": [
+        ("CPT-II - Detectabilidad (d')", ESCALA_BRUTO),
         ("CPT-II - Omisiones (Inatención)", ESCALA_T_INVERSO),
         ("CPT-II - Comisiones (Impulsividad)", ESCALA_T_INVERSO),
-        ("CPT-II - Tiempo de Reacción (Hit RT)", ESCALA_T_INVERSO),
+        ("CPT-II - Tiempo de Reacción (Hit RT)", ESCALA_T_REACCION),
         ("CPT-II - Variabilidad / Consistencia (Hit RT Std Error)", ESCALA_T_INVERSO),
         ("CPT-II - Perseveraciones", ESCALA_T_INVERSO),
+    ],
+    "CPT-3": [
+        ("CPT-3 - Omisiones (T)", ESCALA_T_INVERSO),
+        ("CPT-3 - Comisiones (T)", ESCALA_T_INVERSO),
+        ("CPT-3 - Tiempo de Reacción (Hit RT)", ESCALA_T_REACCION),
+        ("CPT-3 - Detectabilidad (d')", ESCALA_BRUTO),
     ],
     "Nesplora Aula": [
         ("Nesplora Aula - Omisiones Totales", ESCALA_T_INVERSO),
         ("Nesplora Aula - Comisiones Totales", ESCALA_T_INVERSO),
-        ("Nesplora Aula - Tiempo de Reacción (TR)", ESCALA_T_INVERSO),
+        ("Nesplora Aula - Tiempo de Reacción (TR)", ESCALA_T_REACCION),
         ("Nesplora Aula - Variabilidad del TR", ESCALA_T_INVERSO),
         ("Nesplora Aula - Actividad Motora", ESCALA_T_INVERSO),
     ],
     "Figura Compleja de Rey": [
-        ("Figura Compleja de Rey - Copia", ESCALA_T_DIRECTO),
-        ("Figura Compleja de Rey - Memoria Inmediata (3 min)", ESCALA_T_DIRECTO),
-        ("Figura Compleja de Rey - Memoria Diferida (30 min)", ESCALA_T_DIRECTO),
-        ("Figura Compleja de Rey - Reconocimiento", ESCALA_T_DIRECTO),
+        ("Figura Compleja de Rey - Meyers, aciertos (de 12)", ESCALA_BRUTO),
+        ("Figura Compleja de Rey - Meyers, falsos positivos (de 12)", ESCALA_BRUTO),
+        ("Figura Compleja de Rey - Osterrieth, tipo de copia (I a VII en notas)", ESCALA_BRUTO),
+        ("Figura Compleja de Rey - Copia", ESCALA_PERCENTIL_DIRECTO),
+        ("Figura Compleja de Rey - Memoria Inmediata (3 min)", ESCALA_PERCENTIL_DIRECTO),
+        ("Figura Compleja de Rey - Memoria Diferida (30 min)", ESCALA_PERCENTIL_DIRECTO),
+        ("Figura Compleja de Rey - Reconocimiento", ESCALA_PERCENTIL_DIRECTO),
     ],
     "WCST": [
         ("WCST - Categorías Completadas", ESCALA_T_DIRECTO),
@@ -203,6 +227,21 @@ CATALOGO_SUBPRUEBAS = {
         ("BRIEF - Índice de Metacognición (MI)", ESCALA_T_INVERSO),
         ("BRIEF - Índice Global de Función Ejecutiva (GEC)", ESCALA_T_INVERSO),
     ],
+    "BRIEF-2": [
+        ("BRIEF-2 - Inhibición", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Autovigilancia", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Flexibilidad", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Control emocional", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Iniciativa", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Memoria de trabajo", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Planificación y organización", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Supervisión de la tarea", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Organización de materiales", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Regulación conductual (BRI)", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Regulación emocional (ERI)", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Regulación cognitiva (CRI)", ESCALA_T_INVERSO),
+        ("BRIEF-2 - Índice global (GEC)", ESCALA_T_INVERSO),
+    ],
     "Vineland": [
         ("Vineland - Comunicación", ESCALA_CI),
         ("Vineland - Habilidades de la Vida Diaria", ESCALA_CI),
@@ -211,6 +250,12 @@ CATALOGO_SUBPRUEBAS = {
         ("Vineland - Índice Compuesto de Conducta Adaptativa", ESCALA_CI),
     ],
     "PROLEC-R / PROLEC-SE-R": [
+        ("PROLEC-R - Palabras, Principal (categoría en notas)", ESCALA_BRUTO),
+        ("PROLEC-R - Palabras, Precisión (categoría en notas)", ESCALA_BRUTO),
+        ("PROLEC-R - Palabras, Velocidad (categoría en notas)", ESCALA_BRUTO),
+        ("PROLEC-R - Pseudopalabras, Principal (categoría en notas)", ESCALA_BRUTO),
+        ("PROLEC-R - Pseudopalabras, Precisión (categoría en notas)", ESCALA_BRUTO),
+        ("PROLEC-R - Pseudopalabras, Velocidad (categoría en notas)", ESCALA_BRUTO),
         ("PROLEC - Nombre o Sonido de Letras", ESCALA_BRUTO),
         ("PROLEC - Igual-Diferente", ESCALA_BRUTO),
         ("PROLEC - Lectura de Palabras (Precisión y Velocidad)", ESCALA_BRUTO),
@@ -222,6 +267,8 @@ CATALOGO_SUBPRUEBAS = {
         ("PROLEC - Comprensión Oral", ESCALA_BRUTO),
     ],
     "Woodcock-Muñoz": [
+        ("Woodcock-Muñoz - Dictado", ESCALA_BRUTO),
+        ("Woodcock-Muñoz - Completamiento de oraciones", ESCALA_BRUTO),
         ("Woodcock-Muñoz - Cálculo", ESCALA_BRUTO),
         ("Woodcock-Muñoz - Problemas Aplicados", ESCALA_BRUTO),
         ("Woodcock-Muñoz - Identificación de Letras y Palabras", ESCALA_BRUTO),
@@ -234,6 +281,10 @@ CATALOGO_SUBPRUEBAS = {
         ("TOMA-3 - Cociente Matemático Global", ESCALA_CI),
     ],
     "Ortografía Feldman": [
+        ("Feldman - Disléxicos (% informado)", ESCALA_BRUTO),
+        ("Feldman - Disengramas (% informado)", ESCALA_BRUTO),
+        ("Feldman - Códigos (% informado)", ESCALA_BRUTO),
+        ("Feldman - Ortografía (% informado)", ESCALA_BRUTO),
         ("Escala de Ortografía (Feldman) - Puntaje Total", ESCALA_BRUTO),
     ],
     "NALPA": [
@@ -246,13 +297,39 @@ CATALOGO_SUBPRUEBAS = {
         ("Dictado de Oraciones - Rendimiento Global", ESCALA_BRUTO),
     ],
     "SNAP-IV": [
+        ("SNAP-IV - Desatención (suma 0 a 27, Planilla Memoria)", ESCALA_BRUTO),
+        ("SNAP-IV - Desatención (promedio 0 a 3, Planilla Memoria)", ESCALA_BRUTO),
+        ("SNAP-IV - Hiperactividad-Impulsividad (suma 0 a 27, Planilla Memoria)", ESCALA_BRUTO),
+        ("SNAP-IV - Hiperactividad-Impulsividad (promedio 0 a 3, Planilla Memoria)", ESCALA_BRUTO),
         ("SNAP-IV - Indicadores de Inatención", ESCALA_BRUTO),
         ("SNAP-IV - Indicadores de Hiperactividad / Impulsividad", ESCALA_BRUTO),
     ],
     "Escala Durand": [
+        ("Durand MAS - Sensorial (media 0 a 6)", ESCALA_BRUTO),
+        ("Durand MAS - Escape (media 0 a 6)", ESCALA_BRUTO),
+        ("Durand MAS - Atención (media 0 a 6)", ESCALA_BRUTO),
+        ("Durand MAS - Tangible (media 0 a 6)", ESCALA_BRUTO),
+        ("Durand MAS - Sensorial (suma 0 a 24)", ESCALA_BRUTO),
+        ("Durand MAS - Escape (suma 0 a 24)", ESCALA_BRUTO),
+        ("Durand MAS - Atención (suma 0 a 24)", ESCALA_BRUTO),
+        ("Durand MAS - Tangible (suma 0 a 24)", ESCALA_BRUTO),
         ("Escala Motivacional de Durand - Perfil", ESCALA_BRUTO),
     ],
+    "Escala de Autoestima": [
+        ("Autoestima - Académica (Planilla Memoria)", ESCALA_BRUTO),
+        ("Autoestima - Corporal (Planilla Memoria)", ESCALA_BRUTO),
+        ("Autoestima - Familiar (Planilla Memoria)", ESCALA_BRUTO),
+        ("Autoestima - Social (Planilla Memoria)", ESCALA_BRUTO),
+    ],
+    "Vineland Forma B": [
+        ("Vineland Forma B - Edad social (meses)", ESCALA_BRUTO),
+    ],
     "DIVA-5": [
+        ("DIVA-5 - Desatención, adultez (0 a 9)", ESCALA_BRUTO),
+        ("DIVA-5 - Desatención, infancia (0 a 9)", ESCALA_BRUTO),
+        ("DIVA-5 - Hiperactividad-Impulsividad, adultez (0 a 9)", ESCALA_BRUTO),
+        ("DIVA-5 - Hiperactividad-Impulsividad, infancia (0 a 9)", ESCALA_BRUTO),
+        ("DIVA-5 - Ámbitos afectados", ESCALA_BRUTO),
         ("DIVA-5 - Criterios Déficit de Atención (Adultez / Infancia)", ESCALA_BRUTO),
         ("DIVA-5 - Criterios Hiperactividad-Impulsividad (Adultez / Infancia)", ESCALA_BRUTO),
     ],
@@ -321,6 +398,9 @@ BANCO_SUGERENCIAS = {
         "Gestión del tiempo y fragmentación de tareas": "Fragmentar las tareas extensas o evaluaciones en bloques más cortos, otorgando tiempo adicional para su resolución y priorizando la calidad conceptual por sobre la cantidad de ejercicios mecánicos repetitivos.",
         "Apoyos visuales y funciones ejecutivas": "Implementar apoyos visuales, agendas anticipatorias, uso de calendarios a la vista y listas de chequeo (checklists) para la organización de materiales, entregas y armado de la mochila.",
         "Pausas activas y regulación motora": "Permitir breves pausas activas programadas y funcionales dentro del ámbito escolar (ej. borrar el pizarrón, repartir material o llevar un recado) cuando se observe fatiga cognitiva o inquietud motora.",
+        "Fluidez lectora guiada": "Practicar con textos breves y graduados. Modelar la lectura, releer con propósitos distintos y registrar por separado precisión, ritmo y comprensión.",
+        "Acceso a consignas escritas": "Ofrecer lectura de consignas, versión digital o tiempo adicional acordado cuando el objetivo sea evaluar el contenido. Mantener las condiciones propias de la prueba si se está evaluando lectura.",
+        "Seguimiento de precisión y velocidad": "Comparar en muestras similares los tipos de error, la precisión, el ritmo y la comprensión para ajustar los apoyos escolares.",
         "Adaptaciones en Lectoescritura": "Priorizar la evaluación oral o el uso de formatos estructurados (opción múltiple, unir con flechas, completar palabras clave) para evitar que la fatiga lectora o grafomotora penalice la demostración de conocimientos. No exponer a la lectura en voz alta frente al grupo sin preparación previa.",
         "Adaptaciones en Matemática y Cálculo": "Permitir el uso de apoyos concretos, tabla pitagórica, grillas numéricas o calculadora en resoluciones complejas, a fin de no penalizar el razonamiento lógico-matemático por fallas en la memoria operativa o en la automatización del cálculo.",
         "Refuerzo positivo y motivación": "Reforzar positivamente sus logros y el esfuerzo sostenido durante el proceso de trabajo, evitando la sobrecorrección punitiva frente al error para preservar su autoestima académica.",
