@@ -294,6 +294,94 @@ Redactá el INFORME CLÍNICO COMPLETO Y DEFINITIVO siguiendo la estructura y el 
 """.strip()
 
 
+def _aplicar_reemplazos_texto(texto: str, pares: list[tuple[str, str]]) -> str:
+    resultado = texto or ""
+    for buscado, reemplazo in pares:
+        if buscado:
+            resultado = re.sub(re.escape(buscado), reemplazo, resultado, flags=re.IGNORECASE)
+    return resultado
+
+
+def anonimizar_datos_caso(datos_caso: dict) -> tuple[dict, dict[str, str]]:
+    """Reemplaza datos identificatorios del paciente y entorno antes de enviarlos a la API."""
+    datos_copia = dict(datos_caso or {})
+    mapa_reemplazos: dict[str, str] = {}
+    pares_redactar: list[tuple[str, str]] = []
+
+    campos_pii = [
+        ("nombre", "[PACIENTE]"),
+        ("hc", "[ID_CASO]"),
+        ("fecha_nac", "[FECHA_NACIMIENTO]"),
+        ("medico", "[SOLICITANTE]"),
+        ("acompanante", "[ACOMPANANTE]"),
+        ("firma_profesional", "[PROFESIONAL_EVALUADOR]"),
+    ]
+
+    for clave, placeholder in campos_pii:
+        valor = str(datos_copia.get(clave) or "").strip()
+        if not valor:
+            continue
+        mapa_reemplazos[placeholder] = valor
+        datos_copia[clave] = placeholder
+        pares_redactar.append((valor, placeholder))
+        if clave == "nombre":
+            tokens = [t.strip(" ,.;:()") for t in re.split(r"[\s,]+", valor) if len(t.strip(" ,.;:()")) >= 3]
+            for tok in sorted(set(tokens), key=len, reverse=True):
+                pares_redactar.append((tok, placeholder))
+
+    # Ordenar de más largo a más corto para evitar sustituciones parciales
+    pares_redactar.sort(key=lambda item: len(item[0]), reverse=True)
+
+    for campo_txt in (
+        "quien_deriva",
+        "antecedentes",
+        "texto_puntajes_libre",
+        "analisis_clinico_markdown",
+        "impresion_destacar",
+        "detalle_terapeuticas",
+        "detalle_escolares",
+        "recom_personalizadas",
+        "tabla_z_markdown",
+    ):
+        val = datos_copia.get(campo_txt)
+        if isinstance(val, str) and val:
+            datos_copia[campo_txt] = _aplicar_reemplazos_texto(val, pares_redactar)
+
+    for campo_dict in ("conducta", "observaciones_cualitativas"):
+        sub_dict = datos_copia.get(campo_dict)
+        if isinstance(sub_dict, dict):
+            datos_copia[campo_dict] = {
+                k: (_aplicar_reemplazos_texto(v, pares_redactar) if isinstance(v, str) else v)
+                for k, v in sub_dict.items()
+            }
+
+    return datos_copia, mapa_reemplazos
+
+
+def reinyectar_identidad_texto(
+    texto: str,
+    datos_caso: dict | None = None,
+    mapa_reemplazos: dict[str, str] | None = None,
+) -> str:
+    """Restituye los placeholders seudonimizados por los datos identificatorios reales del caso."""
+    resultado = texto or ""
+    mapa = dict(mapa_reemplazos or {})
+    if not mapa and datos_caso:
+        equivalencias = {
+            "[PACIENTE]": str(datos_caso.get("nombre") or "").strip(),
+            "[ID_CASO]": str(datos_caso.get("hc") or "").strip(),
+            "[FECHA_NACIMIENTO]": str(datos_caso.get("fecha_nac") or "").strip(),
+            "[SOLICITANTE]": str(datos_caso.get("medico") or "").strip(),
+            "[ACOMPANANTE]": str(datos_caso.get("acompanante") or "").strip(),
+            "[PROFESIONAL_EVALUADOR]": str(datos_caso.get("firma_profesional") or "").strip(),
+        }
+        mapa = {k: v for k, v in equivalencias.items() if v}
+
+    for placeholder, original in mapa.items():
+        resultado = resultado.replace(placeholder, original)
+    return resultado
+
+
 def _esperar_archivo_activo(
     client,
     file_name: str,
@@ -342,70 +430,74 @@ def preparar_adjuntos_interaccion(
 
     limite_inline = MAX_INLINE_PDF_BYTES if max_inline_bytes is None else max_inline_bytes
 
-    for archivo in archivos:
-        nombre = str(archivo.get("name") or "adjunto")
-        nombre_lower = nombre.lower()
-        raw_bytes = archivo.get("bytes") or b""
-        if not raw_bytes:
-            continue
+    try:
+        for archivo in archivos:
+            nombre = str(archivo.get("name") or "adjunto")
+            nombre_lower = nombre.lower()
+            raw_bytes = archivo.get("bytes") or b""
+            if not raw_bytes:
+                continue
 
-        ext = Path(nombre_lower).suffix
-        if ext == ".pdf":
-            if len(raw_bytes) <= limite_inline:
+            ext = Path(nombre_lower).suffix
+            if ext == ".pdf":
+                if len(raw_bytes) <= limite_inline:
+                    bloques.append(
+                        {
+                            "type": "document",
+                            "data": base64.b64encode(raw_bytes).decode("utf-8"),
+                            "mime_type": "application/pdf",
+                        }
+                    )
+                else:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                        tmp.write(raw_bytes)
+                        tmp_path = tmp.name
+                        temp_paths.append(tmp_path)
+                    uploaded = client.files.upload(file=tmp_path)
+                    uploaded_name = getattr(uploaded, "name", None)
+                    if isinstance(uploaded_name, str) and uploaded_name:
+                        uploaded_names.append(uploaded_name)
+                        _esperar_archivo_activo(client, uploaded_name)
+                    bloques.append(
+                        {
+                            "type": "document",
+                            "uri": uploaded.uri,
+                            "mime_type": "application/pdf",
+                        }
+                    )
+            elif ext in _MIME_IMAGENES:
                 bloques.append(
                     {
-                        "type": "document",
+                        "type": "image",
                         "data": base64.b64encode(raw_bytes).decode("utf-8"),
-                        "mime_type": "application/pdf",
+                        "mime_type": _MIME_IMAGENES[ext],
+                    }
+                )
+            elif ext == ".xlsx":
+                bloques.append(
+                    {
+                        "type": "text",
+                        "text": extraer_texto_xlsx_compacto(raw_bytes, nombre),
+                    }
+                )
+            elif ext == ".docx":
+                bloques.append(
+                    {
+                        "type": "text",
+                        "text": extraer_texto_docx_compacto(raw_bytes, nombre),
                     }
                 )
             else:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                    tmp.write(raw_bytes)
-                    tmp_path = tmp.name
-                    temp_paths.append(tmp_path)
-                uploaded = client.files.upload(file=tmp_path)
-                uploaded_name = getattr(uploaded, "name", None)
-                if isinstance(uploaded_name, str) and uploaded_name:
-                    uploaded_names.append(uploaded_name)
-                    _esperar_archivo_activo(client, uploaded_name)
+                texto_archivo = raw_bytes.decode("utf-8", errors="replace")
                 bloques.append(
                     {
-                        "type": "document",
-                        "uri": uploaded.uri,
-                        "mime_type": "application/pdf",
+                        "type": "text",
+                        "text": f"\n--- Archivo adjunto ({nombre}) ---\n{texto_archivo}\n",
                     }
                 )
-        elif ext in _MIME_IMAGENES:
-            bloques.append(
-                {
-                    "type": "image",
-                    "data": base64.b64encode(raw_bytes).decode("utf-8"),
-                    "mime_type": _MIME_IMAGENES[ext],
-                }
-            )
-        elif ext == ".xlsx":
-            bloques.append(
-                {
-                    "type": "text",
-                    "text": extraer_texto_xlsx_compacto(raw_bytes, nombre),
-                }
-            )
-        elif ext == ".docx":
-            bloques.append(
-                {
-                    "type": "text",
-                    "text": extraer_texto_docx_compacto(raw_bytes, nombre),
-                }
-            )
-        else:
-            texto_archivo = raw_bytes.decode("utf-8", errors="replace")
-            bloques.append(
-                {
-                    "type": "text",
-                    "text": f"\n--- Archivo adjunto ({nombre}) ---\n{texto_archivo}\n",
-                }
-            )
+    except Exception:
+        _limpiar_recursos_temporales(client, temp_paths, uploaded_names)
+        raise
 
     return bloques, temp_paths, uploaded_names
 
@@ -512,6 +604,7 @@ def generar_informe_clinico(
     datos_caso: dict,
     archivos: list[dict] | None = None,
     store: bool = False,
+    anonimizar: bool = True,
 ) -> str:
     """Ejecuta la generación clínica mediante google-genai Interactions API."""
     key_limpia = (api_key or "").strip()
@@ -525,13 +618,18 @@ def generar_informe_clinico(
     else:
         nivel_efectivo = thinking_level or "high"
 
+    if anonimizar:
+        datos_envio, mapa_pii = anonimizar_datos_caso(datos_caso)
+    else:
+        datos_envio, mapa_pii = datos_caso, {}
+
     client = genai.Client(api_key=key_limpia)
     temp_paths: list[str] = []
     uploaded_names: list[str] = []
 
     try:
         bloques_adjuntos, temp_paths, uploaded_names = preparar_adjuntos_interaccion(archivos, client)
-        prompt_caso = construir_prompt_caso(datos_caso)
+        prompt_caso = construir_prompt_caso(datos_envio)
         input_blocks = bloques_adjuntos + [{"type": "text", "text": prompt_caso}]
 
         interaction = client.interactions.create(
@@ -548,6 +646,8 @@ def generar_informe_clinico(
         texto = extraer_texto_interaccion(interaction)
         if not texto:
             raise RuntimeError("El modelo no devolvió contenido de texto.")
+        if anonimizar:
+            texto = reinyectar_identidad_texto(texto, datos_caso, mapa_pii)
         return texto
     finally:
         _limpiar_recursos_temporales(client, temp_paths, uploaded_names)

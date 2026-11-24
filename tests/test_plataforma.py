@@ -17,6 +17,7 @@ import pandas as pd
 import analisis_clinico
 import catalogo_clinico
 import exportador_docx
+import generador_local
 import importador_archivos
 import motor_ia
 import psicometria
@@ -172,8 +173,19 @@ class TestPsicometria(unittest.TestCase):
         self.assertEqual(rav["retencion_pct"], 75.0)
 
         vin = psicometria.calcular_vineland_forma_b(9.0, 10.0)
-        self.assertEqual(vin["cociente_social"], 90.0)
+        self.assertEqual(vin["cociente_social"], 90)
         self.assertEqual(vin["categoria"], "Normal promedio")
+
+        # Redondeo al entero más cercano (8.95 / 10 * 100 = 89.5 -> 90, no 89.5 sin clasificar)
+        vin_borde = psicometria.calcular_vineland_forma_b(8.95, 10.0)
+        self.assertEqual(vin_borde["cociente_social"], 90)
+        self.assertEqual(vin_borde["categoria"], "Normal promedio")
+
+        # Tope cronológico de 25 años en Vineland Forma B
+        vin_adulto = psicometria.calcular_vineland_forma_b(18.0, 32.0)
+        self.assertEqual(vin_adulto["edad_cronologica_efectiva"], 25.0)
+        self.assertEqual(vin_adulto["cociente_social"], 72)
+        self.assertEqual(vin_adulto["categoria"], "Fronterizo")
 
         self.assertEqual(psicometria.calcular_edad_exacta(date(2017, 6, 10), date(2026, 10, 20)), (9, 4))
         self.assertEqual(psicometria.formatear_edad(9, 4), "9 años, 4 meses")
@@ -241,6 +253,42 @@ class TestAnalisisClinico(unittest.TestCase):
         self.assertIn("BRIEF", baremos_txt)
         self.assertIn("Figura de Rey", baremos_txt)
 
+    def test_aislamiento_baterias_snap_y_brief_doble_informante(self):
+        df_in = pd.DataFrame(
+            [
+                # Ediciones distintas de Wechsler (NO deben generar dispersión conjunta de 30 pts)
+                {"Dominio / Prueba / Subtest": "WISC-V - Índice de Comprensión Verbal (ICV)", "Puntaje": 115.0, "Tipo de Escala": catalogo_clinico.ESCALA_CI, "Observación": ""},
+                {"Dominio / Prueba / Subtest": "WAIS-IV - Índice de Velocidad de Procesamiento (IVP)", "Puntaje": 85.0, "Tipo de Escala": catalogo_clinico.ESCALA_CI, "Observación": ""},
+                # Atención cruzada CPT-II vs Nesplora (NO deben combinarse)
+                {"Dominio / Prueba / Subtest": "CPT-II - Tiempo de Reacción (Hit RT)", "Puntaje": 35.0, "Tipo de Escala": catalogo_clinico.ESCALA_T_INVERSO, "Observación": ""},
+                {"Dominio / Prueba / Subtest": "Nesplora Aula: Comisiones", "Puntaje": 96.0, "Tipo de Escala": catalogo_clinico.ESCALA_PERCENTIL_INVERSO, "Observación": ""},
+                # Memoria cruzada RAVLT vs Figura de Rey (NO debe atribuir falla de recuperación sin reconocimiento RAVLT)
+                {"Dominio / Prueba / Subtest": "RAVLT - Recuerdo Diferido (A7)", "Puntaje": -1.8, "Tipo de Escala": catalogo_clinico.ESCALA_Z_DIRECTO, "Observación": ""},
+                {"Dominio / Prueba / Subtest": "Figura Compleja de Rey - Reconocimiento", "Puntaje": 0.5, "Tipo de Escala": catalogo_clinico.ESCALA_Z_DIRECTO, "Observación": ""},
+                # SNAP-IV suma cruda 2 (< 15) NO debe alertar
+                {"Dominio / Prueba / Subtest": "SNAP-IV - Indicadores de Inatención (Madre)", "Puntaje": 2.0, "Tipo de Escala": catalogo_clinico.ESCALA_BRUTO, "Observación": "Informante: Madre"},
+                # BRIEF Madre y Padre por separado
+                {"Dominio / Prueba / Subtest": "BRIEF - Inhibición (Madre)", "Puntaje": 71.0, "Tipo de Escala": catalogo_clinico.ESCALA_T_INVERSO, "Observación": "Informante: Madre"},
+                {"Dominio / Prueba / Subtest": "BRIEF - Inhibición (Padre)", "Puntaje": 75.0, "Tipo de Escala": catalogo_clinico.ESCALA_T_INVERSO, "Observación": "Informante: Padre"},
+            ]
+        )
+        df_proc = psicometria.procesar_tabla_puntajes(df_in)
+        res = analisis_clinico.analizar_perfil_clinico(df_proc, pruebas_usadas=["WISC-V", "WAIS-IV", "CPT-II", "Nesplora Aula", "RAVLT", "Figura Compleja de Rey", "SNAP-IV", "BRIEF"])
+
+        alertas_txt = "\n".join(res["alertas_criticas"])
+        hallazgos_txt = "\n".join(res["hallazgos_automaticos"])
+
+        self.assertNotIn("Dispersión marcada Wechsler", alertas_txt)
+        self.assertNotIn("Heterogeneidad inter-índices", hallazgos_txt)
+        self.assertNotIn("combinado con Comisiones elevadas", alertas_txt)
+        self.assertIn("CPT-II: Tiempo de reacción atípicamente rápido", alertas_txt)
+        self.assertNotIn("estrategias de recuperación", hallazgos_txt)
+        self.assertIn("queda pendiente el reconocimiento de RAVLT", hallazgos_txt)
+        self.assertIn("Figura Compleja de Rey", hallazgos_txt)
+        self.assertNotIn("SNAP-IV Inatención", alertas_txt)
+        self.assertIn("BRIEF - Inhibición (Madre) (T=71)", alertas_txt)
+        self.assertIn("BRIEF - Inhibición (Padre) (T=75)", alertas_txt)
+
 
 class TestImportadorArchivos(unittest.TestCase):
     def test_importar_planilla_xlsx_estilo_memoria(self):
@@ -299,6 +347,65 @@ class TestImportadorArchivos(unittest.TestCase):
         )
         self.assertIn("EE: 9 años y 7 meses", por_nombre["Woodcock-Muñoz - Cálculo"]["Observación"])
         self.assertNotIn("TablaReferencia", por_nombre)
+
+    def test_importar_planilla_fidelidad_wisc_nesplora_brief_y_multihija(self):
+        wb = openpyxl.Workbook()
+        ws_alfa = wb.active
+        ws_alfa.title = "Caso Alfa"
+        ws_alfa.append(["Paciente (Apellido, Nombre)", "Alfa, Uno"])
+        ws_alfa.append(["Fecha de evaluación (dd/mm/aaaa)", "01/10/2026"])
+        ws_alfa.append(["FUNCIONAMIENTO INTELECTUAL · WISC-V (6 a 16 años)"])
+        ws_alfa.append(["Búsqueda de Símbolos (WISC-V)", "PE", 8])
+        ws_alfa.append(["Claves (WISC-V)", "PE", 9])
+        ws_alfa.append(["ATENCIÓN SOSTENIDA"])
+        ws_alfa.append(["Nesplora Aula: Tiempo de reacción", "Pc", 10])
+        ws_alfa.append(["BRIEF"])
+        ws_alfa.append(["Inhibición", 71, 75])
+        ws_alfa.append(["Subtest Error", "PE", "#N/A"])
+
+        ws_beta = wb.create_sheet("Caso Beta")
+        ws_beta.append(["Paciente (Apellido, Nombre)", "Beta, Dos"])
+        ws_beta.append(["Fecha de evaluación (dd/mm/aaaa)", "02/10/2026"])
+        ws_beta.append(["FUNCIONAMIENTO INTELECTUAL · WAIS-IV"])
+        ws_beta.append(["Comprensión Verbal (ICV)", "CI", 120])
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        raw_xlsx = buf.getvalue()
+
+        # Sin hoja_seleccionada debe exigir selección y NO mezclar Alfa y Beta
+        res_pend = importador_archivos.importar_planilla_excel_o_csv(raw_xlsx, "doble.xlsx")
+        self.assertTrue(res_pend["requiere_seleccion_hoja"])
+        self.assertEqual(len(res_pend["filas_puntajes"]), 0)
+        self.assertEqual([h["paciente"] for h in res_pend["hojas_disponibles"]], ["Alfa, Uno", "Beta, Dos"])
+
+        # Seleccionando Caso Alfa importa sus filas completas + auditoría
+        res_alfa = importador_archivos.importar_planilla_excel_o_csv(raw_xlsx, "doble.xlsx", hoja_seleccionada="Caso Alfa")
+        self.assertFalse(res_alfa["requiere_seleccion_hoja"])
+        self.assertEqual(res_alfa["filiacion"]["nombre"], "Alfa, Uno")
+        por_nombre = {r["Dominio / Prueba / Subtest"]: r for r in res_alfa["filas_puntajes"]}
+
+        self.assertIn("WISC-V - Búsqueda de Símbolos", por_nombre)
+        self.assertEqual(por_nombre["WISC-V - Búsqueda de Símbolos"]["Puntaje"], 8.0)
+        self.assertIn("WISC-V - Claves", por_nombre)
+        self.assertEqual(por_nombre["WISC-V - Claves"]["Puntaje"], 9.0)
+        self.assertNotIn("WISC-V - Índice de Comprensión Verbal (ICV)", por_nombre)
+
+        # Nesplora TR Pc 10 -> Percentil Inverso -> Atípico rápido
+        esc_tr = por_nombre["Nesplora Aula: Tiempo de reacción"]["Tipo de Escala"]
+        self.assertEqual(esc_tr, catalogo_clinico.ESCALA_PERCENTIL_INVERSO)
+        _, rango_tr = psicometria.calcular_z_y_rango(10.0, esc_tr, nombre_subtest="Nesplora Aula: Tiempo de reacción")
+        self.assertEqual(rango_tr, "Atípico rápido (estilo impulsivo)")
+
+        # BRIEF Madre y Padre separados
+        self.assertEqual(por_nombre["BRIEF - Inhibición (Madre)"]["Puntaje"], 71.0)
+        self.assertEqual(por_nombre["BRIEF - Inhibición (Padre)"]["Puntaje"], 75.0)
+
+        # Resumen de importación registra fila descartada por #N/A
+        rep = res_alfa["resumen_importacion"]
+        self.assertEqual(rep["filas_descartadas"], 1)
+        self.assertEqual(len(rep["motivos_descarte"]), 1)
+        self.assertIn("#N/A", rep["motivos_descarte"][0])
 
     def test_importar_ficha_docx_y_borrador_json(self):
         doc = Document()
@@ -418,6 +525,138 @@ class TestMotorIA(unittest.TestCase):
         kwargs = fake_client.interactions.create.call_args.kwargs
         self.assertFalse(kwargs["store"])
         self.assertIn("schema", kwargs["response_format"])
+
+    def test_limpieza_archivos_ante_failed_y_timeout(self):
+        # 1. Llamada directa a preparar_adjuntos_interaccion cuando File API devuelve FAILED
+        fake_client = MagicMock()
+        fake_uploaded = MagicMock(uri="files/pdf-fallido")
+        fake_uploaded.name = "files/pdf-fallido"
+        fake_client.files.upload.return_value = fake_uploaded
+        state_failed = MagicMock()
+        state_failed.name = "FAILED"
+        fake_client.files.get.return_value = MagicMock(state=state_failed)
+
+        created_paths = []
+        orig_ntf = tempfile.NamedTemporaryFile
+
+        def tracking_ntf(*args, **kwargs):
+            tmp = orig_ntf(*args, **kwargs)
+            created_paths.append(tmp.name)
+            return tmp
+
+        with patch("motor_ia.tempfile.NamedTemporaryFile", side_effect=tracking_ntf):
+            with self.assertRaises(RuntimeError):
+                motor_ia.preparar_adjuntos_interaccion(
+                    [{"name": "grande.pdf", "bytes": b"%PDF-1.4 " + b"x" * 120}],
+                    fake_client,
+                    max_inline_bytes=20,
+                )
+
+        fake_client.files.delete.assert_called_once_with(name="files/pdf-fallido")
+        self.assertEqual(len(created_paths), 1)
+        self.assertFalse(os.path.exists(created_paths[0]))
+
+        # 2. TimeoutError dentro de generar_informe_clinico también limpia local + remoto
+        fake_client_to = MagicMock()
+        fake_uploaded_to = MagicMock(uri="files/pdf-timeout")
+        fake_uploaded_to.name = "files/pdf-timeout"
+        fake_client_to.files.upload.return_value = fake_uploaded_to
+        state_proc = MagicMock()
+        state_proc.name = "PROCESSING"
+        fake_client_to.files.get.return_value = MagicMock(state=state_proc)
+
+        with patch("motor_ia.genai.Client", return_value=fake_client_to), patch(
+            "motor_ia.MAX_INLINE_PDF_BYTES", 20
+        ), patch(
+            "motor_ia._esperar_archivo_activo",
+            side_effect=TimeoutError("Timeout simulado"),
+        ):
+            with self.assertRaises(TimeoutError):
+                motor_ia.generar_informe_clinico(
+                    api_key="test-key",
+                    modelo="gemini-4-hydrogen",
+                    thinking_level="low",
+                    datos_caso={"nombre": "Paciente Prueba"},
+                    archivos=[{"name": "grande.pdf", "bytes": b"%PDF-1.4 " + b"x" * 120}],
+                )
+        fake_client_to.files.delete.assert_called_once_with(name="files/pdf-timeout")
+
+    def test_seudonimizacion_y_reinyeccion_gemini(self):
+        fake_client = MagicMock()
+        fake_client.interactions.create.return_value = MagicMock(
+            output_text="# INFORME\nPaciente [PACIENTE] (HC [ID_CASO]), derivado por [SOLICITANTE]. Firma: [PROFESIONAL_EVALUADOR]."
+        )
+        datos_caso = {
+            "nombre": "Pérez, Mateo",
+            "hc": "402891",
+            "fecha_nac": "10/06/2017",
+            "fecha_eval": "20/10/2026",
+            "medico": "Dr. Gregory House",
+            "firma_profesional": "Lic. Ana Gómez — MP 999",
+            "quien_deriva": "Mateo Pérez derivado por Dr. Gregory House",
+            "modelos_seleccionados": ["Evaluación Neuropsicológica Completa"],
+        }
+
+        with patch("motor_ia.genai.Client", return_value=fake_client):
+            salida = motor_ia.generar_informe_clinico(
+                api_key="test-key",
+                modelo="gemini-4-hydrogen",
+                thinking_level="low",
+                datos_caso=datos_caso,
+                anonimizar=True,
+            )
+
+        prompt_enviado = fake_client.interactions.create.call_args.kwargs["input"][0]["text"]
+        self.assertNotIn("Pérez, Mateo", prompt_enviado)
+        self.assertNotIn("402891", prompt_enviado)
+        self.assertNotIn("10/06/2017", prompt_enviado)
+        self.assertNotIn("Dr. Gregory House", prompt_enviado)
+        self.assertIn("[PACIENTE]", prompt_enviado)
+        self.assertIn("[ID_CASO]", prompt_enviado)
+
+        self.assertIn("Pérez, Mateo", salida)
+        self.assertIn("402891", salida)
+        self.assertIn("Dr. Gregory House", salida)
+        self.assertIn("Lic. Ana Gómez — MP 999", salida)
+
+
+class TestGeneradorLocal(unittest.TestCase):
+    def test_borrador_local_offline_y_exportacion_docx(self):
+        df_in = pd.DataFrame(
+            [
+                {"Dominio / Prueba / Subtest": "WISC-V - Índice de Comprensión Verbal (ICV)", "Puntaje": 110.0, "Tipo de Escala": catalogo_clinico.ESCALA_CI, "Observación": ""},
+                {"Dominio / Prueba / Subtest": "RAVLT - Recuerdo Diferido (A7)", "Puntaje": -1.8, "Tipo de Escala": catalogo_clinico.ESCALA_Z_DIRECTO, "Observación": ""},
+                {"Dominio / Prueba / Subtest": "Woodcock-Muñoz - Cálculo", "Puntaje": 18.0, "Tipo de Escala": catalogo_clinico.ESCALA_BRUTO, "Observación": "EE: 9 años"},
+            ]
+        )
+        df_proc = psicometria.procesar_tabla_puntajes(df_in)
+        analisis = analisis_clinico.analizar_perfil_clinico(df_proc, pruebas_usadas=["WISC-V", "RAVLT", "Woodcock-Muñoz"])
+        datos_caso = {
+            "modelos_seleccionados": ["Evaluación Neuropsicológica Completa"],
+            "pruebas_usadas": ["WISC-V", "RAVLT", "Woodcock-Muñoz"],
+            "nombre": "Pérez, Mateo",
+            "hc": "402891",
+            "fecha_eval": "20/10/2026",
+            "quien_deriva": "Dificultades de memoria verbal reportadas por el colegio.",
+            "conducta": {"Contacto y vínculo": "Adecuado"},
+            "tabla_z_markdown": df_proc.to_markdown(index=False),
+            "detalle_terapeuticas": "- Apoyo psicopedagógico semanal.",
+            "detalle_escolares": "- Brindar consignas escritas paso a paso.",
+            "firma_profesional": "Lic. Ana Gómez — MP 999",
+        }
+        md_local = generador_local.generar_borrador_local(datos_caso, df_proc, analisis)
+        self.assertIn("Pérez, Mateo", md_local)
+        self.assertIn("queda pendiente el reconocimiento de RAVLT", md_local)
+        self.assertIn("no se encuentra estandarizada para nuestra población", md_local)
+        self.assertIn("El diagnóstico definitivo quedará a cargo del médico tratante", md_local)
+
+        docx_bytes = exportador_docx.generar_docx_bytes(
+            texto_markdown=md_local,
+            datos_filiacion={"nombre": "Pérez, Mateo", "fecha_eval": "20/10/2026"},
+            df_puntajes=df_proc,
+            incluir_grilla_visual_z=True,
+        )
+        self.assertGreater(len(docx_bytes), 2000)
 
 
 class TestExportadorDocx(unittest.TestCase):
@@ -539,6 +778,45 @@ class TestAppStreamlit(unittest.TestCase):
                 if "use_container_width" in str(w.message)
             ]
             self.assertEqual(deprecations, [], f"Warnings de deprecación detectados: {deprecations}")
+
+    def test_apptest_bloqueo_sin_evidencia_flujo_local_y_huella_alfa_beta(self):
+        from streamlit.testing.v1 import AppTest
+
+        app_path = str(Path(__file__).resolve().parent.parent / "app.py")
+        at = AppTest.from_file(app_path, default_timeout=25)
+        at.run()
+        self.assertFalse(at.exception)
+
+        # Elegir solo modelo + nombre sin evidencia clínica NO debe generar informe
+        at.multiselect[0].set_value(["Evaluación Neuropsicológica Completa"]).run()
+        at.text_input[0].set_value("Alfa, Paciente").run()
+        btn_local = next(b for b in at.button if "Generar Borrador Local" in b.label)
+        btn_local.click().run()
+        self.assertFalse(at.session_state.get("informe_actual"))
+        self.assertTrue(any("no alcanza solo con elegir modelo y nombre" in w.value for w in at.warning))
+
+        # Al cargar evidencia (Conducta acorde), genera borrador offline y habilita descargas
+        btn_cond = next(b for b in at.button if "Conducta acorde" in b.label)
+        btn_cond.click().run()
+        btn_local = next(b for b in at.button if "Generar Borrador Local" in b.label)
+        btn_local.click().run()
+        self.assertIn("Alfa, Paciente", at.session_state["informe_actual"])
+        dls_activos = [
+            dl for dl in at.get("download_button")
+            if "Word" in dl.label or "Markdown" in dl.label
+        ]
+        self.assertEqual(len(dls_activos), 2)
+        self.assertTrue(all(not dl.disabled for dl in dls_activos))
+
+        # Cambiar nombre de Alfa a Beta debe advertir y deshabilitar descargas del borrador anterior
+        at.text_input[0].set_value("Beta, Paciente").run()
+        self.assertTrue(any("Regenerá el informe" in w.value for w in at.warning))
+        dls_bloqueados = [
+            dl for dl in at.get("download_button")
+            if "Word" in dl.label or "Markdown" in dl.label
+        ]
+        self.assertEqual(len(dls_bloqueados), 2)
+        self.assertTrue(all(dl.disabled for dl in dls_bloqueados))
 
 
 if __name__ == "__main__":

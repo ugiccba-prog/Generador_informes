@@ -325,16 +325,21 @@ def calcular_vineland_forma_b(
     ):
         return None
 
-    cs = round((float(edad_social_anos) / float(edad_cronologica_anos)) * 100.0, 1)
+    edad_cron_efectiva = min(float(edad_cronologica_anos), 25.0)
+    cs_exacto = (float(edad_social_anos) / edad_cron_efectiva) * 100.0
+    cs_redondeado = int(math.floor(round(cs_exacto, 6) + 0.5))
+
     categoria = "Sin clasificar"
     for minimo, maximo, nombre_cat in VINELAND_FORMA_B_CATEGORIAS:
-        if minimo <= cs <= maximo:
+        if minimo <= cs_redondeado <= maximo:
             categoria = nombre_cat
             break
-    if cs >= 130:
+    if cs_redondeado >= 130:
         categoria = "Muy superior"
     return {
-        "cociente_social": cs,
+        "cociente_social": cs_redondeado,
+        "cociente_social_exacto": round(cs_exacto, 1),
+        "edad_cronologica_efectiva": round(edad_cron_efectiva, 2),
         "categoria": categoria,
     }
 

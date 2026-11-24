@@ -81,7 +81,17 @@ def _mapear_escala(tipo_str: str, nombre_prueba: str) -> str:
         return ESCALA_T_DIRECTO
     if t in ("pc", "percentil"):
         if any(b in n for b in ("nesplora", "cpt")) and any(
-            k in n for k in ("omision", "comision", "actividad motora", "variabilidad", "perseveracion", "error")
+            k in n
+            for k in (
+                "omision",
+                "comision",
+                "actividad motora",
+                "variabilidad",
+                "perseveracion",
+                "error",
+                "tiempo de reaccion",
+                "hit rt",
+            )
         ):
             return ESCALA_PERCENTIL_INVERSO
         return ESCALA_PERCENTIL_DIRECTO
@@ -194,28 +204,128 @@ def _leer_filas_xlsx(raw_bytes: bytes) -> list[tuple[str, list[list[str]]]]:
     return hojas
 
 
-def importar_planilla_excel_o_csv(raw_bytes: bytes, nombre_archivo: str = "") -> dict:
+def _resumir_hojas_xlsx(hojas: list[tuple[str, list[list[str]]]]) -> list[dict]:
+    """Resume cada hoja de un libro .xlsx con paciente, fecha de evaluación y conteo de filas."""
+    resumen: list[dict] = []
+    for nombre_hoja, filas in hojas:
+        paciente = ""
+        fecha_eval = ""
+        hc = ""
+        filas_con_valor = 0
+        for fila in filas:
+            c0 = fila[0] if len(fila) > 0 else ""
+            c1 = fila[1] if len(fila) > 1 else ""
+            c2 = fila[2] if len(fila) > 2 else ""
+            c3 = fila[3] if len(fila) > 3 else ""
+            c0_norm = _normalizar_texto(c0)
+            if c0_norm.startswith("paciente") and c1 and not paciente:
+                paciente = c1
+                continue
+            if "fecha de evaluacion" in c0_norm and c1 and not fecha_eval:
+                fecha_eval = c1
+                continue
+            if c0_norm == "hc" and c1 and not hc:
+                hc = c1
+                continue
+            if c0_norm.startswith(
+                (
+                    "planilla de puntuaciones",
+                    "como se usa",
+                    "1. ",
+                    "2. ",
+                    "3. ",
+                    "4. ",
+                    "5. ",
+                    "corte ",
+                    "dificultad si",
+                    "significativo si",
+                )
+            ):
+                continue
+            if any(_parsear_numero(col) is not None for col in (c1, c2, c3)) or (
+                any((c1, c2)) and c0_norm not in ("prueba", "subtest", "informante", "escala", "funcion", "area", "")
+            ):
+                filas_con_valor += 1
+        resumen.append(
+            {
+                "hoja": nombre_hoja,
+                "paciente": paciente,
+                "fecha_eval": fecha_eval,
+                "hc": hc,
+                "filas_con_valor": filas_con_valor,
+                "tiene_datos": bool(paciente or fecha_eval or hc or filas_con_valor > 0),
+            }
+        )
+    return resumen
+
+
+def listar_hojas_planilla(raw_bytes: bytes) -> list[dict]:
+    """Inspecciona las hojas de un .xlsx y devuelve metadatos clave de cada evaluación."""
+    return _resumir_hojas_xlsx(_leer_filas_xlsx(raw_bytes))
+
+
+def importar_planilla_excel_o_csv(
+    raw_bytes: bytes,
+    nombre_archivo: str = "",
+    hoja_seleccionada: str | None = None,
+) -> dict:
     """Importa filiación, pruebas detectadas y puntajes desde Planilla Modelo (.xlsx o .csv)."""
     es_xlsx = nombre_archivo.lower().endswith(".xlsx")
     if es_xlsx:
         hojas = _leer_filas_xlsx(raw_bytes)
+        hojas_info = _resumir_hojas_xlsx(hojas)
+        hojas_con_datos = [h for h in hojas_info if h["tiene_datos"]]
+        if hoja_seleccionada is not None:
+            coincidencias = [h for h in hojas if h[0] == hoja_seleccionada]
+            if not coincidencias:
+                raise ValueError(f"No se encontró la hoja '{hoja_seleccionada}' en el archivo.")
+            hojas_a_procesar = coincidencias
+        elif len(hojas_con_datos) > 1:
+            return {
+                "requiere_seleccion_hoja": True,
+                "hojas_disponibles": hojas_info,
+                "hoja_importada": None,
+                "filiacion": {},
+                "filas_puntajes": [],
+                "pruebas_detectadas": [],
+                "texto_extra": "",
+                "resumen_importacion": {
+                    "hoja": None,
+                    "filas_leidas": 0,
+                    "filas_importadas": 0,
+                    "filas_descartadas": 0,
+                    "motivos_descarte": [
+                        f"El archivo contiene {len(hojas_con_datos)} hojas con evaluaciones; seleccioná una hoja antes de importar."
+                    ],
+                },
+            }
+        elif len(hojas_con_datos) == 1:
+            objetivo = hojas_con_datos[0]["hoja"]
+            hojas_a_procesar = [h for h in hojas if h[0] == objetivo]
+        else:
+            hojas_a_procesar = hojas[:1]
     else:
-        hojas = [("CSV", _leer_filas_csv(raw_bytes))]
+        hojas_a_procesar = [("CSV", _leer_filas_csv(raw_bytes))]
+        hojas_info = []
 
     filiacion: dict[str, str] = {}
     filas_puntajes: list[dict] = []
     pruebas_detectadas: list[str] = []
     notas_extra: list[str] = []
+    filas_leidas = 0
+    filas_descartadas = 0
+    motivos_descarte: list[str] = []
+    hoja_importada = hojas_a_procesar[0][0] if hojas_a_procesar else None
 
     def _registrar_bateria(bat: str | None) -> None:
         if bat and bat in CATALOGO_SUBPRUEBAS and bat not in pruebas_detectadas:
             pruebas_detectadas.append(bat)
 
-    for _nombre_hoja, filas in hojas:
+    for nombre_hoja, filas in hojas_a_procesar:
         seccion_actual = ""
         modo_especial = ""
 
-        for fila in filas:
+        for idx_fila, fila in enumerate(filas, start=1):
             c0 = fila[0] if len(fila) > 0 else ""
             c1 = fila[1] if len(fila) > 1 else ""
             c2 = fila[2] if len(fila) > 2 else ""
@@ -247,57 +357,98 @@ def importar_planilla_excel_o_csv(raw_bytes: bytes, nombre_archivo: str = "") ->
                 filiacion["escolaridad"] = c1
                 continue
 
-            # Detectar secciones de la Planilla Modelo
-            if "wisc-v" in c0_norm:
-                seccion_actual, modo_especial = "WISC-V", ""
-                continue
-            if "wppsi-iv" in c0_norm:
-                seccion_actual, modo_especial = "WPPSI-IV", ""
-                continue
-            if "wais-iv" in c0_norm:
-                seccion_actual, modo_especial = "WAIS-IV", ""
-                continue
-            if "lenguaje (nepsy-ii)" in c0_norm:
-                seccion_actual, modo_especial = "NEPSY-II", ""
-                continue
-            if "woodcock" in c0_norm:
-                seccion_actual, modo_especial = "Woodcock-Muñoz", "woodcock"
-                continue
-            if "prolec" in c0_norm:
-                seccion_actual, modo_especial = "PROLEC-R / PROLEC-SE-R", "prolec"
-                continue
-            if c0_norm == "snap-iv":
-                seccion_actual, modo_especial = "SNAP-IV", "snap"
-                continue
-            if c0_norm == "brief":
-                seccion_actual, modo_especial = "BRIEF", "brief"
-                continue
-            if "escala durand" in c0_norm:
-                seccion_actual, modo_especial = "Escala Durand", "durand"
-                continue
-            if "escala de autoestima" in c0_norm:
-                seccion_actual, modo_especial = "Escala de Autoestima", "autoestima"
-                continue
-            if "vineland" in c0_norm and "madurez social" in c0_norm:
-                seccion_actual, modo_especial = "Vineland", "vineland_b"
-                continue
-            if c0_norm.startswith(
-                (
-                    "atencion ",
-                    "memoria ",
-                    "funciones ejecutivas",
-                    "habilidades visoespaciales",
-                    "matematica",
-                )
-            ) and not c1:
-                seccion_actual, modo_especial = "", ""
-                continue
-
-            # Ignorar filas de encabezado o ayuda
+            # Ignorar filas de título general, encabezado de columnas o ayuda
             if c0_norm in ("prueba", "subtest", "informante", "escala", "funcion", "area") or c0_norm.startswith(
-                ("como se usa", "1. ", "2. ", "3. ", "4. ", "5. ", "corte ", "dificultad si", "significativo si")
+                (
+                    "planilla de puntuaciones",
+                    "como se usa",
+                    "1. ",
+                    "2. ",
+                    "3. ",
+                    "4. ",
+                    "5. ",
+                    "corte ",
+                    "dificultad si",
+                    "significativo si",
+                )
             ):
                 continue
+
+            # Solo interpretar una fila como cabecera de sección si NO contiene puntajes ni código de escala
+            c1_norm = _normalizar_texto(c1)
+            es_escala_en_c1 = c1_norm in (
+                "ci",
+                "pe",
+                "escalar",
+                "pc",
+                "percentil",
+                "t",
+                "t inv",
+                "t_inv",
+                "t inverso",
+                "z",
+                "v-scale",
+                "vscale",
+                "v scale",
+                "bruto",
+                "pb",
+            )
+            tiene_num = any(_parsear_numero(col) is not None for col in (c1, c2, c3))
+            es_cabecera_seccion = not tiene_num and not es_escala_en_c1 and not (
+                modo_especial in ("woodcock", "prolec") and (c2 or c3)
+            )
+
+            if es_cabecera_seccion:
+                if "wisc-v" in c0_norm:
+                    seccion_actual, modo_especial = "WISC-V", ""
+                    continue
+                if "wppsi-iv" in c0_norm:
+                    seccion_actual, modo_especial = "WPPSI-IV", ""
+                    continue
+                if "wais-iv" in c0_norm:
+                    seccion_actual, modo_especial = "WAIS-IV", ""
+                    continue
+                if "lenguaje (nepsy-ii)" in c0_norm:
+                    seccion_actual, modo_especial = "NEPSY-II", ""
+                    continue
+                if "woodcock" in c0_norm:
+                    seccion_actual, modo_especial = "Woodcock-Muñoz", "woodcock"
+                    continue
+                if "prolec" in c0_norm:
+                    seccion_actual, modo_especial = "PROLEC-R / PROLEC-SE-R", "prolec"
+                    continue
+                if c0_norm == "snap-iv":
+                    seccion_actual, modo_especial = "SNAP-IV", "snap"
+                    continue
+                if c0_norm == "brief":
+                    seccion_actual, modo_especial = "BRIEF", "brief"
+                    continue
+                if "escala durand" in c0_norm:
+                    seccion_actual, modo_especial = "Escala Durand", "durand"
+                    continue
+                if "escala de autoestima" in c0_norm:
+                    seccion_actual, modo_especial = "Escala de Autoestima", "autoestima"
+                    continue
+                if "vineland" in c0_norm and "madurez social" in c0_norm:
+                    seccion_actual, modo_especial = "Vineland", "vineland_b"
+                    continue
+                if c0_norm.startswith(
+                    (
+                        "atencion ",
+                        "memoria ",
+                        "funciones ejecutivas",
+                        "habilidades visoespaciales",
+                        "matematica",
+                    )
+                ):
+                    seccion_actual, modo_especial = "", ""
+                    continue
+
+            # Ignorar filas de plantilla sin completar (sin ningún valor en B..E)
+            if not any((c1, c2, c3, c4)):
+                continue
+
+            filas_leidas += 1
 
             # Procesamiento por modo de sección
             if modo_especial == "woodcock":
@@ -318,6 +469,9 @@ def importar_planilla_excel_o_csv(raw_bytes: bytes, nombre_archivo: str = "") ->
                             "Observación": " | ".join(obs_partes),
                         }
                     )
+                else:
+                    filas_descartadas += 1
+                    motivos_descarte.append(f"Hoja '{nombre_hoja}' fila {idx_fila} ('{c0}'): sin valor válido para Woodcock-Muñoz.")
                 continue
 
             if modo_especial == "prolec":
@@ -338,6 +492,9 @@ def importar_planilla_excel_o_csv(raw_bytes: bytes, nombre_archivo: str = "") ->
                             "Observación": " | ".join(obs_partes),
                         }
                     )
+                else:
+                    filas_descartadas += 1
+                    motivos_descarte.append(f"Hoja '{nombre_hoja}' fila {idx_fila} ('{c0}'): sin valor válido para PROLEC.")
                 continue
 
             if modo_especial == "snap":
@@ -364,6 +521,11 @@ def importar_planilla_excel_o_csv(raw_bytes: bytes, nombre_archivo: str = "") ->
                                 "Observación": f"Informante: {c0}",
                             }
                         )
+                else:
+                    filas_descartadas += 1
+                    motivos_descarte.append(
+                        f"Hoja '{nombre_hoja}' fila {idx_fila} ('{c0}'): valores SNAP-IV no numéricos ({c1!r}, {c2!r})."
+                    )
                 continue
 
             if modo_especial == "brief":
@@ -373,18 +535,28 @@ def importar_planilla_excel_o_csv(raw_bytes: bytes, nombre_archivo: str = "") ->
                     _registrar_bateria("BRIEF")
                     sub_nom, _ = _resolver_nombre_y_bateria(c0, "BRIEF")
                     if t_madre is not None:
-                        obs_b = f"Madre (Padre T={c2})" if t_padre is not None else "Informante: Madre"
-                        punt_b = t_madre
-                    else:
-                        obs_b = "Informante: Padre"
-                        punt_b = t_padre
-                    filas_puntajes.append(
-                        {
-                            "Dominio / Prueba / Subtest": sub_nom,
-                            "Puntaje": punt_b,
-                            "Tipo de Escala": ESCALA_T_INVERSO,
-                            "Observación": obs_b,
-                        }
+                        filas_puntajes.append(
+                            {
+                                "Dominio / Prueba / Subtest": f"{sub_nom} (Madre)",
+                                "Puntaje": t_madre,
+                                "Tipo de Escala": ESCALA_T_INVERSO,
+                                "Observación": "Informante: Madre",
+                            }
+                        )
+                    if t_padre is not None:
+                        filas_puntajes.append(
+                            {
+                                "Dominio / Prueba / Subtest": f"{sub_nom} (Padre)",
+                                "Puntaje": t_padre,
+                                "Tipo de Escala": ESCALA_T_INVERSO,
+                                "Observación": "Informante: Padre",
+                            }
+                        )
+                    notas_extra.append(f"BRIEF {sub_nom}: Madre={c1 or '-'}, Padre={c2 or '-'}")
+                else:
+                    filas_descartadas += 1
+                    motivos_descarte.append(
+                        f"Hoja '{nombre_hoja}' fila {idx_fila} ('{c0}'): valores BRIEF no numéricos ({c1!r}, {c2!r})."
                     )
                 continue
 
@@ -401,15 +573,21 @@ def importar_planilla_excel_o_csv(raw_bytes: bytes, nombre_archivo: str = "") ->
                             "Observación": c2,
                         }
                     )
+                else:
+                    filas_descartadas += 1
+                    motivos_descarte.append(f"Hoja '{nombre_hoja}' fila {idx_fila} ('{c0}'): valor inválido o vacío.")
                 continue
 
             if modo_especial == "vineland_b":
                 if c1:
                     _registrar_bateria("Vineland")
                     notas_extra.append(f"Vineland Forma B — {c0}: {c1}")
+                else:
+                    filas_descartadas += 1
+                    motivos_descarte.append(f"Hoja '{nombre_hoja}' fila {idx_fila} ('{c0}'): sin dato en Vineland Forma B.")
                 continue
 
-            # Filas estándar de tabla (Prueba, Tipo, Puntaje) o (Tipo, Puntaje)
+            # Filas estándar de tabla (Prueba, Tipo, Puntaje)
             num_c2 = _parsear_numero(c2)
             if c1 and num_c2 is not None:
                 sub_nom, bat = _resolver_nombre_y_bateria(c0, seccion_actual)
@@ -420,15 +598,30 @@ def importar_planilla_excel_o_csv(raw_bytes: bytes, nombre_archivo: str = "") ->
                         "Dominio / Prueba / Subtest": sub_nom,
                         "Puntaje": num_c2,
                         "Tipo de Escala": escala,
-                        "Observación": "",
+                        "Observación": c3,
                     }
+                )
+            else:
+                filas_descartadas += 1
+                motivos_descarte.append(
+                    f"Hoja '{nombre_hoja}' fila {idx_fila} ('{c0}'): formato no reconocido o puntaje no numérico (Tipo={c1!r}, Puntaje={c2!r})."
                 )
 
     return {
+        "requiere_seleccion_hoja": False,
+        "hojas_disponibles": hojas_info,
+        "hoja_importada": hoja_importada,
         "filiacion": filiacion,
         "filas_puntajes": filas_puntajes,
         "pruebas_detectadas": pruebas_detectadas,
         "texto_extra": "\n".join(notas_extra),
+        "resumen_importacion": {
+            "hoja": hoja_importada,
+            "filas_leidas": filas_leidas,
+            "filas_importadas": len(filas_puntajes),
+            "filas_descartadas": filas_descartadas,
+            "motivos_descarte": motivos_descarte,
+        },
     }
 
 

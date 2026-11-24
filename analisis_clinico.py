@@ -46,6 +46,43 @@ def _extraer_registros(df_procesado: pd.DataFrame) -> list[dict]:
     return registros
 
 
+def _detectar_bateria(norm: str) -> str | None:
+    """Identifica de forma estricta la batería/edición a la que pertenece una fila."""
+    if "wisc-v" in norm or "wisc v" in norm:
+        return "WISC-V"
+    if "wppsi-iv" in norm or "wppsi iv" in norm:
+        return "WPPSI-IV"
+    if "wais-iv" in norm or "wais iv" in norm:
+        return "WAIS-IV"
+    if "cpt-ii" in norm or "cpt ii" in norm or norm.startswith("cpt"):
+        return "CPT-II"
+    if "nesplora" in norm:
+        return "Nesplora Aula"
+    if "ravlt" in norm:
+        return "RAVLT"
+    if "tomal" in norm:
+        return "TOMAL"
+    if "wraml" in norm:
+        return "WRAML"
+    if "figura compleja de rey" in norm or ("rey" in norm and any(k in norm for k in ("figura", "copia", "memoria", "reconocimiento"))):
+        return "Figura Compleja de Rey"
+    if "brief" in norm:
+        return "BRIEF"
+    if "snap-iv" in norm:
+        return "SNAP-IV"
+    if "autoestima" in norm:
+        return "Escala de Autoestima"
+    if "durand" in norm:
+        return "Escala Durand"
+    if "vineland" in norm:
+        return "Vineland"
+    return None
+
+
+def _formatear_z(z_val: float | None) -> str:
+    return f"Z={z_val:+.2f}" if z_val is not None else "Z=N/A"
+
+
 def _analizar_wechsler(
     registros: list[dict],
     edad_anos_meses: tuple[int, int] | None,
@@ -54,60 +91,70 @@ def _analizar_wechsler(
     hallazgos: list[str],
 ) -> None:
     claves_primarias = ("icv", "ive", "irp", "irf", "imt", "ivp")
-    indices_primarios: dict[str, float] = {}
-    cit_val = None
-    icg_val = None
-    icc_val = None
+    por_edicion: dict[str, dict] = {}
 
     for reg in registros:
         if reg["escala"] != ESCALA_CI or reg["puntaje"] is None:
             continue
         norm = reg["norm"]
-        if not any(b in norm for b in ("wisc", "wppsi", "wais")):
+        edicion = _detectar_bateria(norm)
+        if edicion not in ("WISC-V", "WPPSI-IV", "WAIS-IV"):
             continue
 
+        bucket = por_edicion.setdefault(
+            edicion,
+            {"primarios": {}, "cit": None, "icg": None, "icc": None},
+        )
         if "cit" in norm or "coeficiente intelectual total" in norm:
-            cit_val = reg["puntaje"]
+            bucket["cit"] = reg["puntaje"]
         elif "(icg)" in norm or "capacidad general" in norm:
-            icg_val = reg["puntaje"]
+            bucket["icg"] = reg["puntaje"]
         elif "(icc)" in norm or "competencia cognitiva" in norm:
-            icc_val = reg["puntaje"]
+            bucket["icc"] = reg["puntaje"]
         else:
             for clave in claves_primarias:
                 if f"({clave})" in norm or f" {clave}" in norm:
-                    indices_primarios[clave.upper()] = reg["puntaje"]
+                    bucket["primarios"][clave.upper()] = reg["puntaje"]
                     break
 
-    if len(indices_primarios) >= 2:
-        max_k = max(indices_primarios, key=lambda k: indices_primarios[k])
-        min_k = min(indices_primarios, key=lambda k: indices_primarios[k])
-        amplitud = indices_primarios[max_k] - indices_primarios[min_k]
-        if amplitud >= 23:
-            msg = (
-                f"Dispersión marcada Wechsler ({amplitud:.0f} pts entre {max_k}={indices_primarios[max_k]:.0f} "
-                f"y {min_k}={indices_primarios[min_k]:.0f}): el CIT"
-            )
-            if cit_val is not None:
-                msg += f" ({cit_val:.0f})"
-            msg += " puede no representar una capacidad unitaria; priorizar interpretación del ICG."
-            alertas_criticas.append(msg)
-        elif amplitud >= 15:
-            hallazgos.append(
-                f"Heterogeneidad inter-índices moderada en Wechsler ({amplitud:.0f} pts entre {max_k} y {min_k})."
-            )
+    for edicion, datos_ed in por_edicion.items():
+        indices_primarios = datos_ed["primarios"]
+        cit_val = datos_ed["cit"]
+        icg_val = datos_ed["icg"]
+        icc_val = datos_ed["icc"]
 
-    if icg_val is not None and icc_val is not None and (icg_val - icc_val) >= 12:
-        alertas_criticas.append(
-            f"Disociación ICG ({icg_val:.0f}) > ICC ({icc_val:.0f}) por {icg_val - icc_val:.0f} pts: "
-            "potencial de razonamiento preservado con cuello de botella en eficiencia cognitiva (IMT/IVP)."
-        )
-    elif icg_val is not None and ("IMT" in indices_primarios or "IVP" in indices_primarios):
-        operativos = [indices_primarios[k] for k in ("IMT", "IVP") if k in indices_primarios]
-        prom_op = sum(operativos) / len(operativos)
-        if (icg_val - prom_op) >= 15:
-            hallazgos.append(
-                f"Brecha relevante entre ICG ({icg_val:.0f}) e índices operativos IMT/IVP (promedio {prom_op:.0f})."
+        if len(indices_primarios) >= 2:
+            max_k = max(indices_primarios, key=lambda k: indices_primarios[k])
+            min_k = min(indices_primarios, key=lambda k: indices_primarios[k])
+            amplitud = indices_primarios[max_k] - indices_primarios[min_k]
+            if amplitud >= 23:
+                msg = (
+                    f"Dispersión marcada Wechsler ({edicion}: {amplitud:.0f} pts entre "
+                    f"{max_k}={indices_primarios[max_k]:.0f} y {min_k}={indices_primarios[min_k]:.0f}): el CIT"
+                )
+                if cit_val is not None:
+                    msg += f" ({cit_val:.0f})"
+                msg += " puede no representar una capacidad unitaria; priorizar interpretación del ICG."
+                alertas_criticas.append(msg)
+            elif amplitud >= 15:
+                hallazgos.append(
+                    f"Heterogeneidad inter-índices moderada en {edicion} ({amplitud:.0f} pts entre "
+                    f"{max_k}={indices_primarios[max_k]:.0f} y {min_k}={indices_primarios[min_k]:.0f})."
+                )
+
+        if icg_val is not None and icc_val is not None and (icg_val - icc_val) >= 12:
+            alertas_criticas.append(
+                f"Disociación ICG ({icg_val:.0f}) > ICC ({icc_val:.0f}) en {edicion} por {icg_val - icc_val:.0f} pts: "
+                "potencial de razonamiento preservado con cuello de botella en eficiencia cognitiva (IMT/IVP)."
             )
+        elif icg_val is not None and ("IMT" in indices_primarios or "IVP" in indices_primarios):
+            operativos = [indices_primarios[k] for k in ("IMT", "IVP") if k in indices_primarios]
+            prom_op = sum(operativos) / len(operativos)
+            if (icg_val - prom_op) >= 15:
+                detalle_op = ", ".join(f"{k}={indices_primarios[k]:.0f}" for k in ("IMT", "IVP") if k in indices_primarios)
+                hallazgos.append(
+                    f"Brecha relevante en {edicion} entre ICG ({icg_val:.0f}) e índices operativos ({detalle_op}; promedio {prom_op:.0f})."
+                )
 
     # Coherencia etaria de escalas Wechsler
     if edad_anos_meses is not None:
@@ -133,82 +180,119 @@ def _analizar_atencion_cpt_nesplora(
     alertas_criticas: list[str],
     hallazgos: list[str],
 ) -> None:
-    hit_rt_rapido = False
-    comisiones_z = None
-    omisiones_z = None
+    por_bateria: dict[str, dict] = {}
 
     for reg in registros:
-        norm = reg["norm"]
-        if not any(b in norm for b in ("cpt", "nesplora")):
+        bat = _detectar_bateria(reg["norm"])
+        if bat not in ("CPT-II", "Nesplora Aula"):
             continue
+        bucket = por_bateria.setdefault(bat, {"rt_rapido": [], "comisiones": [], "omisiones": []})
         if "atipico rapido" in _normalizar_texto(reg["rango"]):
-            hit_rt_rapido = True
-        if "comision" in norm and reg["z"] is not None:
-            comisiones_z = reg["z"]
-        if "omision" in norm and reg["z"] is not None:
-            omisiones_z = reg["z"]
+            bucket["rt_rapido"].append(reg)
+        if "comision" in reg["norm"] and reg["z"] is not None:
+            bucket["comisiones"].append(reg)
+        if "omision" in reg["norm"] and reg["z"] is not None:
+            bucket["omisiones"].append(reg)
 
-    if hit_rt_rapido:
-        if comisiones_z is not None and comisiones_z <= -1.00:
-            alertas_criticas.append(
-                "CPT/Nesplora: Tiempo de reacción atípicamente rápido (T < 40) combinado con Comisiones elevadas "
-                "(patrón consistente con estilo impulsivo / trade-off velocidad-precisión)."
-            )
-        else:
-            alertas_criticas.append(
-                "CPT/Nesplora: Tiempo de reacción atípicamente rápido (T < 40 / Pc ≤ 15). No interpretar como "
-                "'Normal Alto/Superior', sino como sesgo de respuesta acelerada."
-            )
+    for bat, datos_bat in por_bateria.items():
+        rt_list = datos_bat["rt_rapido"]
+        com_list = datos_bat["comisiones"]
+        om_list = datos_bat["omisiones"]
 
-    if omisiones_z is not None and omisiones_z <= -1.50 and comisiones_z is not None and comisiones_z >= 0.50:
-        hallazgos.append(
-            "CPT/Nesplora: Omisiones muy elevadas (Z ≤ -1.50) con Comisiones bajas — verificar posible desconexión "
-            "atencional sostenida que reduce artificialmente las respuestas por comisión."
-        )
+        com_bajas_z = [r for r in com_list if r["z"] is not None and r["z"] <= -1.00]
+        if rt_list:
+            rt_txt = ", ".join(
+                f"{r['nombre']}={r['puntaje']:g} ({_formatear_z(r['z'])})"
+                for r in rt_list
+                if r["puntaje"] is not None
+            ) or bat
+            if com_bajas_z:
+                com_txt = ", ".join(
+                    f"{r['nombre']}={r['puntaje']:g} ({_formatear_z(r['z'])})"
+                    for r in com_bajas_z
+                    if r["puntaje"] is not None
+                )
+                alertas_criticas.append(
+                    f"{bat}: Tiempo de reacción atípicamente rápido ({rt_txt}) combinado con Comisiones elevadas "
+                    f"({com_txt}) (patrón consistente con estilo impulsivo / trade-off velocidad-precisión)."
+                )
+            else:
+                alertas_criticas.append(
+                    f"{bat}: Tiempo de reacción atípicamente rápido ({rt_txt}). No interpretar como "
+                    "'Normal Alto/Superior', sino como sesgo de respuesta acelerada."
+                )
+
+        om_severas = [r for r in om_list if r["z"] is not None and r["z"] <= -1.50]
+        com_preservadas = [r for r in com_list if r["z"] is not None and r["z"] >= 0.50]
+        if om_severas and com_preservadas:
+            om_txt = ", ".join(f"{r['nombre']} ({_formatear_z(r['z'])})" for r in om_severas)
+            com_txt = ", ".join(f"{r['nombre']} ({_formatear_z(r['z'])})" for r in com_preservadas)
+            hallazgos.append(
+                f"{bat}: Omisiones muy elevadas ({om_txt}) con Comisiones bajas ({com_txt}) — verificar posible "
+                "desconexión atencional sostenida que reduce artificialmente las respuestas por comisión."
+            )
 
 
 def _analizar_memoria_diferencial(registros: list[dict], hallazgos: list[str]) -> None:
-    z_inm: list[float] = []
-    z_dem: list[float] = []
-    z_rec: list[float] = []
+    baterias_memoria = ("RAVLT", "TOMAL", "WRAML", "Figura Compleja de Rey")
+    por_bateria: dict[str, dict[str, list[dict]]] = {}
 
     for reg in registros:
         if reg["z"] is None:
             continue
-        norm = reg["norm"]
-        if not any(b in norm for b in ("ravlt", "tomal", "wraml", "rey")):
+        bat = _detectar_bateria(reg["norm"])
+        if bat not in baterias_memoria:
             continue
+        norm = reg["norm"]
+        bucket = por_bateria.setdefault(bat, {"inm": [], "dem": [], "rec": []})
 
         if any(k in norm for k in ("inmediat", "a1-a5", "total aprendizaje", "post-interferencia", "a6")):
-            z_inm.append(reg["z"])
+            bucket["inm"].append(reg)
         elif any(k in norm for k in ("demorad", "diferid", "a7")):
-            z_dem.append(reg["z"])
+            bucket["dem"].append(reg)
         elif "reconocimiento" in norm:
-            z_rec.append(reg["z"])
+            bucket["rec"].append(reg)
 
-    if not z_dem:
-        return
+    for bat, fases in por_bateria.items():
+        if not fases["dem"]:
+            continue
 
-    prom_dem = sum(z_dem) / len(z_dem)
-    prom_inm = (sum(z_inm) / len(z_inm)) if z_inm else None
-    prom_rec = (sum(z_rec) / len(z_rec)) if z_rec else None
+        prom_dem = sum(r["z"] for r in fases["dem"]) / len(fases["dem"])
+        prom_inm = (sum(r["z"] for r in fases["inm"]) / len(fases["inm"])) if fases["inm"] else None
+        prom_rec = (sum(r["z"] for r in fases["rec"]) / len(fases["rec"])) if fases["rec"] else None
 
-    if prom_dem <= -1.33:
-        if prom_rec is not None and prom_rec > -1.00:
-            hallazgos.append(
-                "Perfil mnésico: recuerdo diferido descendido con reconocimiento preservado "
-                "(sugiere falla en estrategias de recuperación más que pérdida de almacenamiento)."
-            )
-        elif prom_inm is not None and prom_inm > -1.00 and prom_rec is not None and prom_rec <= -1.33:
-            hallazgos.append(
-                "Perfil mnésico: aprendizaje/recuerdo inmediato preservado con descenso en diferido y reconocimiento "
-                "(sugiere vulnerabilidad en consolidación/almacenamiento)."
-            )
-        elif prom_inm is not None and prom_inm <= -1.33:
-            hallazgos.append(
-                "Perfil mnésico: compromiso desde la fase de recuerdo inmediato y diferido "
-                "(sugiere falla primaria de codificación/registro atencional inicial)."
-            )
+        dem_desc = ", ".join(f"{r['nombre']} ({_formatear_z(r['z'])})" for r in fases["dem"])
+        inm_desc = ", ".join(f"{r['nombre']} ({_formatear_z(r['z'])})" for r in fases["inm"])
+        rec_desc = ", ".join(f"{r['nombre']} ({_formatear_z(r['z'])})" for r in fases["rec"])
+
+        if prom_dem <= -1.33:
+            if prom_rec is not None and prom_rec > -1.00:
+                hallazgos.append(
+                    f"Perfil mnésico en {bat} ({dem_desc}): recuerdo diferido descendido con reconocimiento "
+                    f"preservado ({rec_desc}) (sugiere falla en estrategias de recuperación más que pérdida de almacenamiento)."
+                )
+            elif prom_inm is not None and prom_inm > -1.00 and prom_rec is not None and prom_rec <= -1.33:
+                hallazgos.append(
+                    f"Perfil mnésico en {bat}: recuerdo inmediato preservado ({inm_desc}) con descenso en "
+                    f"diferido ({dem_desc}) y reconocimiento ({rec_desc}) (sugiere vulnerabilidad en consolidación/almacenamiento)."
+                )
+            elif prom_inm is not None and prom_inm <= -1.33 and prom_rec is not None and prom_rec <= -1.33:
+                hallazgos.append(
+                    f"Perfil mnésico en {bat}: compromiso en fase inmediata ({inm_desc}), diferido ({dem_desc}) "
+                    f"y reconocimiento ({rec_desc}) (sugiere falla primaria de codificación/registro atencional inicial)."
+                )
+            else:
+                otras_rec = [b for b, f in por_bateria.items() if b != bat and f["rec"]]
+                aviso_rec = (
+                    f" El reconocimiento disponible pertenece a {', '.join(otras_rec)} y no se cruza con {bat}."
+                    if otras_rec
+                    else ""
+                )
+                extra_inm = f" El recuerdo inmediato de {bat} obtuvo {inm_desc}." if inm_desc else ""
+                hallazgos.append(
+                    f"En {bat}, el recuerdo diferido obtuvo {dem_desc}.{extra_inm}{aviso_rec} "
+                    f"Para caracterizar codificación/almacenamiento vs. recuperación queda pendiente el reconocimiento de {bat}."
+                )
 
 
 def _analizar_cuestionarios_y_auxiliares(
@@ -229,18 +313,34 @@ def _analizar_cuestionarios_y_auxiliares(
             continue
 
         if "brief" in norm and (reg["escala"] == ESCALA_T_INVERSO or "t " in _normalizar_texto(reg["escala"])):
+            etiqueta_brief = reg["nombre"]
+            notas_b = reg.get("notas", "")
+            if "informante:" in _normalizar_texto(notas_b) and not any(
+                inf in _normalizar_texto(etiqueta_brief) for inf in ("madre", "padre", "docente")
+            ):
+                etiqueta_brief = f"{etiqueta_brief} ({notas_b})"
             if val >= 70:
-                brief_clinico.append(f"{reg['nombre']} (T={val:.0f})")
+                brief_clinico.append(f"{etiqueta_brief} (T={val:.0f})")
             elif val >= 65:
-                brief_potencial.append(f"{reg['nombre']} (T={val:.0f})")
+                brief_potencial.append(f"{etiqueta_brief} (T={val:.0f})")
             elif val >= 60:
-                brief_leve.append(f"{reg['nombre']} (T={val:.0f})")
+                brief_leve.append(f"{etiqueta_brief} (T={val:.0f})")
 
         elif "snap-iv" in norm:
-            if "inatencion" in norm and (val >= 15 or (1.67 <= val <= 3.0)):
-                alertas_criticas.append(f"SNAP-IV Inatención supera punto de corte clínico ({val:g}).")
-            elif ("hiperactividad" in norm or "impulsividad" in norm) and (val >= 16 or (1.67 <= val <= 3.0)):
-                alertas_criticas.append(f"SNAP-IV Hiperactividad/Impulsividad supera punto de corte clínico ({val:g}).")
+            es_promedio = any(
+                k in norm or k in _normalizar_texto(reg.get("notas", ""))
+                for k in ("promedio", "media", "item")
+            )
+            if "inatencion" in norm and (val >= 15 or (es_promedio and 1.67 <= val <= 3.0)):
+                alertas_criticas.append(
+                    f"SNAP-IV Inatención supera punto de corte clínico ({val:g}; {reg['nombre']})."
+                )
+            elif ("hiperactividad" in norm or "impulsividad" in norm) and (
+                val >= 16 or (es_promedio and 1.67 <= val <= 3.0)
+            ):
+                alertas_criticas.append(
+                    f"SNAP-IV Hiperactividad/Impulsividad supera punto de corte clínico ({val:g}; {reg['nombre']})."
+                )
 
         elif "autoestima" in norm and val <= 12:
             alertas_criticas.append(f"{reg['nombre']} en rango significativo (puntaje {val:g} ≤ 12).")
