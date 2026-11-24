@@ -79,7 +79,7 @@ def calcular_z_y_rango(valor: float, tipo_escala: str) -> tuple[float | None, st
         z = (50.0 - val) / 10.0
     elif tipo_escala == ESCALA_PERCENTIL:
         if val < 0.01 or val > 99.99:
-            return None, "Percentil fuera de rango (1-99)"
+            return None, "Percentil fuera de rango (0,01 a 99,99)"
         z = _NORMAL_DIST.inv_cdf(val / 100.0)
     elif tipo_escala == ESCALA_Z_DIRECTO:
         z = val
@@ -141,6 +141,44 @@ def _texto_limpio(valor) -> str:
     if valor is None or pd.isna(valor):
         return ""
     return str(valor).strip()
+
+
+def revisar_carga_puntajes(df: pd.DataFrame) -> tuple[list[str], list[str]]:
+    """Detecta resultados que se perderían o cuya escala necesita revisión."""
+    errores = []
+    avisos = []
+    vistas = {}
+    for fila, (_, datos) in enumerate(df.iterrows(), start=1):
+        nombre = _texto_limpio(datos.get("Dominio / Prueba / Subtest"))
+        puntaje = datos.get("Puntaje")
+        nota = _texto_limpio(datos.get("Observación"))
+        tiene_puntaje = puntaje is not None and pd.notna(puntaje)
+        if not tiene_puntaje and not nota:
+            continue
+        if not nombre:
+            errores.append(f"Fila {fila}: completá el nombre de la prueba o subprueba.")
+            continue
+        clave = _normalizar_texto(nombre)
+        if clave in vistas:
+            avisos.append(
+                f"Filas {vistas[clave]} y {fila}: identificá cada registro si corresponden a condiciones o tomas distintas."
+            )
+        else:
+            vistas[clave] = fila
+        if not tiene_puntaje:
+            continue
+        escala = _texto_limpio(datos.get("Tipo de Escala"))
+        try:
+            valor = float(puntaje)
+        except (TypeError, ValueError):
+            valor = math.nan
+        if not math.isfinite(valor):
+            errores.append(f"Fila {fila}: ingresá un puntaje numérico válido.")
+        elif escala != ESCALA_BRUTO:
+            z, motivo = calcular_z_y_rango(valor, escala)
+            if z is None:
+                errores.append(f"Fila {fila}: {motivo if escala else 'Elegí la escala del puntaje informado'}.")
+    return errores, avisos
 
 
 def procesar_tabla_puntajes(df: pd.DataFrame) -> pd.DataFrame:

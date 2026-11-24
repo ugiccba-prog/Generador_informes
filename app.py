@@ -29,6 +29,7 @@ from psicometria import (
     categoria_color_rango,
     formatear_edad,
     procesar_tabla_puntajes,
+    revisar_carga_puntajes,
     sanitizar_nombre_archivo,
 )
 
@@ -42,7 +43,6 @@ st.set_page_config(
 )
 
 COLUMNAS_EDITOR = ["Dominio / Prueba / Subtest", "Puntaje", "Tipo de Escala", "Observación"]
-SUBPRUEBAS_CATALOGO_SET = {sub for lista in CATALOGO_SUBPRUEBAS.values() for sub, _ in lista}
 
 DEFAULTS_CALCULADORA = {
     ESCALA_ESCALAR: 10.0,
@@ -83,7 +83,7 @@ with st.sidebar:
             index=config_modelo["thinking_levels"].index(config_modelo["default_thinking"]),
             key=f"razonamiento_{modelo_gemini}",
         )
-        st.caption("Gemini recibe los puntajes, las notas y los adjuntos que confirmes.")
+        st.caption("Gemini recibe únicamente las notas por dominio y los adjuntos que confirmes.")
 
     st.divider()
     st.subheader("Memoria de Drive")
@@ -133,10 +133,11 @@ with st.sidebar:
 
     if esc_calc == ESCALA_PERCENTIL:
         val_calc = st.number_input(
-            "Puntaje (Percentil 1-99)",
-            min_value=1.0,
-            max_value=99.0,
-            step=1.0,
+            "Percentil",
+            min_value=0.01,
+            max_value=99.99,
+            step=0.01,
+            format="%.2f",
             key="calc_valor",
         )
     else:
@@ -336,14 +337,17 @@ if "ultimo_df_editado" not in st.session_state:
 if list(pruebas_usadas) != st.session_state["pruebas_previas"]:
     df_prev = st.session_state["ultimo_df_editado"]
     nuevas_personalizadas = []
+    nombres_baterias_activas = {
+        nombre_sub
+        for prueba in st.session_state["pruebas_previas"]
+        for nombre_sub, _ in CATALOGO_SUBPRUEBAS.get(prueba, ())
+    }
+    filas_automaticas_vistas = set()
 
     if df_prev is not None and not df_prev.empty:
         for _, r in df_prev.iterrows():
             sub_raw = r.get("Dominio / Prueba / Subtest")
             sub_key = "" if pd.isna(sub_raw) else str(sub_raw).strip()
-            if not sub_key:
-                continue
-
             punt_raw = r.get("Puntaje")
             punt_val = float(punt_raw) if pd.notna(punt_raw) else None
             esc_raw = r.get("Tipo de Escala")
@@ -351,7 +355,8 @@ if list(pruebas_usadas) != st.session_state["pruebas_previas"]:
             obs_raw = r.get("Observación")
             obs_val = "" if pd.isna(obs_raw) else str(obs_raw).strip()
 
-            if sub_key in SUBPRUEBAS_CATALOGO_SET:
+            if sub_key in nombres_baterias_activas and sub_key not in filas_automaticas_vistas:
+                filas_automaticas_vistas.add(sub_key)
                 if punt_val is not None or obs_val:
                     st.session_state["cache_subpruebas"][sub_key] = (punt_val, esc_val, obs_val)
                 else:
@@ -361,7 +366,7 @@ if list(pruebas_usadas) != st.session_state["pruebas_previas"]:
                     {
                         "Dominio / Prueba / Subtest": sub_key,
                         "Puntaje": punt_val,
-                        "Tipo de Escala": esc_val or ESCALAS_DISPONIBLES[0],
+                        "Tipo de Escala": esc_val,
                         "Observación": obs_val,
                     }
                 )
@@ -381,7 +386,7 @@ if list(pruebas_usadas) != st.session_state["pruebas_previas"]:
                     {
                         "Dominio / Prueba / Subtest": nombre_sub,
                         "Puntaje": punt_prev,
-                        "Tipo de Escala": esc_prev or escala_defecto,
+                        "Tipo de Escala": esc_prev,
                         "Observación": obs_prev,
                     }
                 )
@@ -433,6 +438,11 @@ df_editado = st.data_editor(
 
 st.session_state["ultimo_df_editado"] = df_editado.copy()
 df_procesado = procesar_tabla_puntajes(df_editado)
+errores_puntajes, avisos_puntajes = revisar_carga_puntajes(df_editado)
+for error in errores_puntajes:
+    st.error(error)
+for aviso in avisos_puntajes:
+    st.warning(aviso)
 
 if not df_procesado.empty:
     st.markdown("##### ✅ Resumen de Puntuaciones Calculadas (que se enviarán al informe):")
@@ -455,6 +465,12 @@ with col_p2:
         ) or []
     else:
         st.caption("Para usar un reporte en el borrador local, transcribí sus resultados y la referencia en las notas.")
+
+fuentes_resultados = st.text_area(
+    "Fuentes de los resultados y criterios de puntuación",
+    height=80,
+    placeholder="Prueba y edición, manual o protocolo consultado, baremo o fuente de la observación.",
+)
 
 st.divider()
 
@@ -503,14 +519,21 @@ st.divider()
 # =====================================================================
 # 8. SECCIÓN 6: CONCLUSIONES Y SUGERENCIAS FINALES
 # =====================================================================
-st.header("6. Conclusiones y Sugerencias Finales")
+st.header("6. Integración de hallazgos y recomendaciones")
+hall1, hall2 = st.columns(2)
+with hall1:
+    fortalezas = st.text_area("Fortalezas observadas", height=90, placeholder="Hallazgo y observación o resultado que lo respalda.")
+    impacto_funcional = st.text_area("Impacto cotidiano o escolar registrado", height=90, placeholder="Situación, fuente e impacto observado o referido.")
+with hall2:
+    dificultades = st.text_area("Dificultades observadas", height=90, placeholder="Hallazgo, prueba o contexto en que apareció.")
+    limitaciones = st.text_area("Alcance y limitaciones", height=90, placeholder="Condiciones de evaluación o datos pendientes que limitan la interpretación.")
 
 col_s1, col_s2 = st.columns(2)
 with col_s1:
     impresion_destacar = st.text_area(
-        "Síntesis diagnóstica / Qué querés destacar en las Conclusiones:",
+        "Síntesis profesional",
         height=100,
-        placeholder="Ej: Perfil cognitivo dentro del promedio con vulnerabilidad específica en el sostenimiento atencional y control inhibitorio...",
+        placeholder="Integrá los hallazgos según el motivo de consulta y diferenciá lo observado de lo referido.",
     )
     frecuencia_y_control = st.text_input(
         "Frecuencia de tratamiento y plazo de reevaluación (opcional)",
@@ -531,6 +554,11 @@ with col_s2:
         placeholder="Seleccionar adaptaciones escolares...",
     )
 
+fundamento_recomendaciones = st.text_area(
+    "¿Qué hallazgos fundamentan las recomendaciones?",
+    height=80,
+    placeholder="Vinculá cada recomendación con la necesidad y el contexto en que se aplicaría.",
+)
 recom_personalizadas = st.text_area(
     "Agregar otras sugerencias personalizadas (para la familia, escuela o terapeutas):",
     height=75,
@@ -548,8 +576,97 @@ if sug_terapeuticas_sel or sug_escolares_sel:
                 st.markdown(f"- **{item}:** {BANCO_SUGERENCIAS['escolares'][item]}")
 
 st.divider()
-confirmar_envio = usar_ia and st.checkbox(
-    "Revisé que los datos libres, la grilla y los adjuntos estén desidentificados y autorizo enviarlos a Gemini.",
+fecha_nac_str = fecha_nac.strftime("%d/%m/%Y") if fecha_nac else ""
+fecha_eval_str = fecha_eval.strftime("%d/%m/%Y") if fecha_eval else ""
+
+tabla_z_markdown = grilla_markdown(df_procesado)
+
+detalle_terapeuticas = "\n".join(
+    [f"- {k}: {BANCO_SUGERENCIAS['terapeuticas'][k]}" for k in sug_terapeuticas_sel]
+)
+detalle_escolares = "\n".join(
+    [f"- {k}: {BANCO_SUGERENCIAS['escolares'][k]}" for k in sug_escolares_sel]
+)
+
+firma_profesional = (
+    f"{profesional_nombre} — {profesional_matricula}".strip(" —")
+    if profesional_nombre or profesional_matricula
+    else "[Firma y Sello del Profesional]"
+)
+
+datos_caso = {
+    "modelos_seleccionados": modelos_seleccionados,
+    "pruebas_usadas": pruebas_usadas,
+    "nombre": nombre,
+    "hc": hc,
+    "edad_texto": edad_texto,
+    "fecha_nac": fecha_nac_str,
+    "fecha_eval": fecha_eval_str,
+    "escolaridad": escolaridad,
+    "nacionalidad": nacionalidad,
+    "preferencia": preferencia,
+    "medico": medico,
+    "firma_profesional": firma_profesional,
+    "acompanante": acompanante,
+    "quien_deriva": quien_deriva,
+    "antecedentes": antecedentes,
+    "conducta": {
+        "Contacto y vínculo": obs_vinculo,
+        "Predisposición": obs_predisp,
+        "Comprensión de consignas": obs_consignas,
+        "Atención observable": obs_desatencion,
+        "Actividad motora": obs_motora,
+        "Impulsividad": obs_impulsividad,
+        "Tolerancia a la frustración": obs_frustracion,
+        "Ansiedad frente al error": obs_ansiedad,
+        "Ritmo de trabajo y fatiga": obs_ritmo,
+        "Lenguaje expresivo": obs_lenguaje,
+        "Notas extra de conducta": obs_extra,
+    },
+    "tabla_z_markdown": tabla_z_markdown,
+    "texto_puntajes_libre": texto_puntajes_libre,
+    "fuentes_resultados": fuentes_resultados,
+    "observaciones_cualitativas": {
+        "Funcionamiento Intelectual (Wechsler)": obs_wechsler,
+        "Memoria y Aprendizaje": obs_memoria,
+        "Atención y Funciones Ejecutivas": obs_atencion_fe,
+        "Visomotor y Lenguaje": obs_viso_leng,
+        "Nivel de alfabetización": alfabetizado,
+        "Lectura, Escritura y Ortografía": obs_lectoescritura,
+        "Cálculo y Matemática": obs_matematica,
+        "Cuestionarios / Vineland / DIVA-5": cuestionarios_txt,
+    },
+    "fortalezas": fortalezas,
+    "dificultades": dificultades,
+    "impacto_funcional": impacto_funcional,
+    "limitaciones": limitaciones,
+    "impresion_destacar": impresion_destacar,
+    "fundamento_recomendaciones": fundamento_recomendaciones,
+    "frecuencia_y_control": frecuencia_y_control,
+    "detalle_terapeuticas": detalle_terapeuticas,
+    "detalle_escolares": detalle_escolares,
+    "recom_personalizadas": recom_personalizadas,
+}
+
+archivos_del_caso = tuple(archivo.file_id for archivo in archivos_adjuntos)
+
+pendientes = []
+if not quien_deriva.strip():
+    pendientes.append("Motivo de consulta")
+if not impresion_destacar.strip():
+    pendientes.append("Síntesis profesional")
+if (tabla_z_markdown or texto_puntajes_libre.strip() or archivos_adjuntos) and not fuentes_resultados.strip():
+    pendientes.append("Fuentes de los resultados")
+if (detalle_terapeuticas or detalle_escolares or recom_personalizadas.strip()) and not fundamento_recomendaciones.strip():
+    pendientes.append("Vínculo entre hallazgos y recomendaciones")
+if pendientes:
+    st.caption("Para revisar antes de entregar · " + " · ".join(pendientes))
+
+puede_asistir = usar_ia and bool(motor_ia.notas_por_dominio(datos_caso) or archivos_adjuntos)
+if usar_ia and not puede_asistir:
+    st.caption("Con notas por dominio o adjuntos podés usar Gemini. El resto del informe se arma en la aplicación.")
+confirmar_envio = puede_asistir and st.checkbox(
+    "Revisé que las notas por dominio y los adjuntos estén desidentificados y autorizo enviarlos a Gemini.",
     key=f"confirmar_envio_gemini_{st.session_state.get('envios_gemini', 0)}",
 )
 boton_generar = st.button("Generar borrador", type="primary", width="stretch")
@@ -559,111 +676,37 @@ boton_generar = st.button("Generar borrador", type="primary", width="stretch")
 # =====================================================================
 if boton_generar:
     hay_datos_caso = any(
-        [
+        (
             pruebas_usadas,
-            not df_procesado.empty,
+            tabla_z_markdown,
             texto_puntajes_libre.strip(),
             archivos_adjuntos,
             quien_deriva.strip(),
             antecedentes.strip(),
-            obs_extra.strip(),
-            obs_vinculo, obs_predisp, obs_consignas, obs_desatencion, obs_motora,
-            obs_impulsividad, obs_frustracion, obs_ansiedad, obs_ritmo, obs_lenguaje,
-            alfabetizado,
-            obs_wechsler.strip(),
-            obs_memoria.strip(),
-            obs_atencion_fe.strip(),
-            obs_viso_leng.strip(),
-            obs_lectoescritura.strip(),
-            obs_matematica.strip(),
-            cuestionarios_txt.strip(),
-            impresion_destacar.strip(),
-        ]
+            any(datos_caso["conducta"].values()),
+            any(nota.strip() for nota in datos_caso["observaciones_cualitativas"].values()),
+            any((fortalezas.strip(), dificultades.strip(), impacto_funcional.strip(),
+                 limitaciones.strip(), impresion_destacar.strip())),
+        )
     )
-
-    if not hay_datos_caso:
+    if errores_puntajes:
+        st.error("Corregí las filas señaladas en la grilla antes de generar.")
+    elif not hay_datos_caso:
         st.warning("Cargá pruebas, puntajes, adjuntos u observaciones antes de generar.")
     elif fecha_nac and fecha_eval and fecha_eval < fecha_nac:
         st.error("Corregí las fechas antes de generar el borrador.")
-    elif usar_ia and not api_key:
+    elif puede_asistir and not api_key:
         st.error("Ingresá la clave de Gemini en el menú lateral.")
-    elif usar_ia and not confirmar_envio:
+    elif puede_asistir and not confirmar_envio:
         st.error("Revisá la desidentificación y confirmá el envío a Gemini.")
-    elif usar_ia and guia_aprobada is None:
+    elif puede_asistir and guia_aprobada is None:
         st.error("Corregí la guía de redacción o desmarcá su envío.")
-    elif usar_ia and sum(archivo.size for archivo in archivos_adjuntos) > motor_ia.MAX_INLINE_PDF_BYTES:
+    elif puede_asistir and sum(archivo.size for archivo in archivos_adjuntos) > motor_ia.MAX_INLINE_PDF_BYTES:
         st.error("Los adjuntos pueden sumar hasta 12 MB por solicitud.")
     else:
         with st.spinner("Preparando el borrador…"):
             try:
-                fecha_nac_str = fecha_nac.strftime("%d/%m/%Y") if fecha_nac else ""
-                fecha_eval_str = fecha_eval.strftime("%d/%m/%Y") if fecha_eval else ""
-
-                tabla_z_markdown = grilla_markdown(df_procesado)
-
-                detalle_terapeuticas = "\n".join(
-                    [f"- {k}: {BANCO_SUGERENCIAS['terapeuticas'][k]}" for k in sug_terapeuticas_sel]
-                )
-                detalle_escolares = "\n".join(
-                    [f"- {k}: {BANCO_SUGERENCIAS['escolares'][k]}" for k in sug_escolares_sel]
-                )
-
-                firma_profesional = (
-                    f"{profesional_nombre} — {profesional_matricula}".strip(" —")
-                    if profesional_nombre or profesional_matricula
-                    else "[Firma y Sello del Profesional]"
-                )
-
-                datos_caso = {
-                    "modelos_seleccionados": modelos_seleccionados,
-                    "pruebas_usadas": pruebas_usadas,
-                    "nombre": nombre,
-                    "hc": hc,
-                    "edad_texto": edad_texto,
-                    "edad_para_ia": formatear_edad(*edad_calc) if edad_calc else "",
-                    "fecha_nac": fecha_nac_str,
-                    "fecha_eval": fecha_eval_str,
-                    "escolaridad": escolaridad,
-                    "nacionalidad": nacionalidad,
-                    "preferencia": preferencia,
-                    "medico": medico,
-                    "firma_profesional": firma_profesional,
-                    "acompanante": acompanante,
-                    "quien_deriva": quien_deriva,
-                    "antecedentes": antecedentes,
-                    "conducta": {
-                        "Contacto y vínculo": obs_vinculo,
-                        "Predisposición": obs_predisp,
-                        "Comprensión de consignas": obs_consignas,
-                        "Atención observable": obs_desatencion,
-                        "Actividad motora": obs_motora,
-                        "Impulsividad": obs_impulsividad,
-                        "Tolerancia a la frustración": obs_frustracion,
-                        "Ansiedad frente al error": obs_ansiedad,
-                        "Ritmo de trabajo y fatiga": obs_ritmo,
-                        "Lenguaje expresivo": obs_lenguaje,
-                        "Notas extra de conducta": obs_extra,
-                    },
-                    "tabla_z_markdown": tabla_z_markdown,
-                    "texto_puntajes_libre": texto_puntajes_libre,
-                    "observaciones_cualitativas": {
-                        "Funcionamiento Intelectual (Wechsler)": obs_wechsler,
-                        "Memoria y Aprendizaje": obs_memoria,
-                        "Atención y Funciones Ejecutivas": obs_atencion_fe,
-                        "Visomotor y Lenguaje": obs_viso_leng,
-                        "Nivel de alfabetización": alfabetizado,
-                        "Lectura, Escritura y Ortografía": obs_lectoescritura,
-                        "Cálculo y Matemática": obs_matematica,
-                        "Cuestionarios / Vineland / DIVA-5": cuestionarios_txt,
-                    },
-                    "impresion_destacar": impresion_destacar,
-                    "frecuencia_y_control": frecuencia_y_control,
-                    "detalle_terapeuticas": detalle_terapeuticas,
-                    "detalle_escolares": detalle_escolares,
-                    "recom_personalizadas": recom_personalizadas,
-                }
-
-                if usar_ia:
+                if puede_asistir:
                     st.session_state["envios_gemini"] = st.session_state.get("envios_gemini", 0) + 1
                     archivos_payload = [
                         {
@@ -672,17 +715,23 @@ if boton_generar:
                         }
                         for indice, archivo in enumerate(archivos_adjuntos, start=1)
                     ]
-                    texto_generado = motor_ia.generar_informe_clinico(
-                        api_key=api_key,
-                        modelo=modelo_gemini,
-                        thinking_level=thinking_level,
-                        datos_caso=datos_caso,
-                        archivos=archivos_payload,
-                        guia_estilo=guia_aprobada,
-                    )
+                    try:
+                        texto_generado = motor_ia.generar_informe_clinico(
+                            api_key=api_key,
+                            modelo=modelo_gemini,
+                            thinking_level=thinking_level,
+                            datos_caso=datos_caso,
+                            archivos=archivos_payload,
+                            guia_estilo=guia_aprobada,
+                        )
+                    except motor_ia.RespuestaRedaccionInvalida:
+                        st.warning("La respuesta de Gemini no se pudo incorporar. Se generó el borrador local.")
+                        texto_generado = construir_borrador(datos_caso)
                 else:
                     texto_generado = construir_borrador(datos_caso)
 
+                st.session_state["redaccion_asistida"] = puede_asistir
+                st.session_state["datos_del_borrador"] = (datos_caso, archivos_del_caso)
                 st.session_state["informe_original"] = texto_generado
                 st.session_state["informe_actual"] = texto_generado
                 st.session_state["informe_version"] = st.session_state.get("informe_version", 0) + 1
@@ -711,6 +760,13 @@ if st.session_state.get("informe_original"):
     )
     with tab_vista:
         st.markdown(texto_vigente.replace("![", r"\!\["))
+        datos_originales, _ = st.session_state.get("datos_del_borrador", ({}, ()))
+        notas_originales = motor_ia.notas_por_dominio(datos_originales)
+        if notas_originales and st.session_state.get("redaccion_asistida"):
+            with st.expander("Comparar con las notas originales"):
+                for dominio, nota in notas_originales.items():
+                    st.markdown(f"**{dominio}**")
+                    st.text(nota)
     with tab_editar:
         texto_editado = st.text_area(
             "Editá o ajustá el texto del informe (Markdown):",
@@ -722,6 +778,14 @@ if st.session_state.get("informe_original"):
             st.session_state["informe_actual"] = st.session_state["informe_original"]
             st.session_state["informe_version"] = version_inf + 1
             st.rerun()
+
+    carga_cambio = (
+        st.session_state.get("datos_del_borrador") != (datos_caso, archivos_del_caso)
+        or bool(errores_puntajes)
+        or bool(fecha_nac and fecha_eval and fecha_eval < fecha_nac)
+    )
+    if carga_cambio:
+        st.warning("Cambió la ficha del caso. Generá un borrador actualizado para descargarlo.")
 
     meta = st.session_state.get("informe_meta") or {}
     texto_para_descarga = st.session_state["informe_actual"]
@@ -739,16 +803,20 @@ if st.session_state.get("informe_original"):
         st.download_button(
             label="⬇️ Descargar en Word (.docx)",
             data=docx_bytes,
+            disabled=carga_cambio,
             file_name=f"{nombre_base}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             width="stretch",
             type="primary",
+            on_click="ignore",
         )
     with col_dl2:
         st.download_button(
             label="⬇️ Descargar en Markdown (.md)",
             data=texto_para_descarga,
+            disabled=carga_cambio,
             file_name=f"{nombre_base}.md",
             mime="text/markdown",
             width="stretch",
+            on_click="ignore",
         )

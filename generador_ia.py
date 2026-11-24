@@ -80,7 +80,6 @@ def generar_informe_completo_con_ia() -> int:
         "nombre": paciente,
         "hc": hc,
         "edad_texto": edad,
-        "edad_para_ia": edad,
         "escolaridad": escolaridad,
         "fecha_eval": fecha_eval,
         "medico": "Equipo Médico / Escolar",

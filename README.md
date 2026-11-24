@@ -11,7 +11,7 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py --server.address 127.0.0.1
 ```
 
-El modo local arranca sin clave. Completá el formulario y transcribí desde los reportes adjuntos los resultados relevantes y su fuente. Si registrás puntajes brutos o categorías, usá el manual correspondiente para verificar edición, edad o población normativa. La conversión Z para puntajes estandarizados es orientativa y se rige por la escala indicada en cada fila.
+El modo local arranca sin clave. Completá el formulario en orden. Cargá resultados y fuentes, describí los dominios que observaste y consigná las fortalezas, dificultades, impacto y límites que correspondan. Registrá qué hallazgos fundamentan las recomendaciones. El borrador indica cuando la integración profesional está pendiente. Si cambiás la ficha después de generar, la aplicación pide actualizar el borrador antes de descargar. Si registrás puntajes brutos o categorías, usá el manual correspondiente para verificar edición, edad o población normativa. La conversión Z para puntajes estandarizados es orientativa y se rige por la escala indicada en cada fila.
 
 ## Memoria de Drive
 
@@ -26,7 +26,7 @@ Los informes históricos, las planillas de casos y los manuales completos quedan
 
 ## Redacción opcional con Gemini
 
-Activá **Asistencia de redacción con Gemini**. Configurá `GEMINI_API_KEY` en el entorno o en los secretos de Streamlit, o ingresala en la sesión. Verificá qué modelos están habilitados para la clave. El envío requiere confirmación y se limita a la edad calculada, la grilla, las notas, las pruebas, las recomendaciones cargadas y los adjuntos revisados. La filiación y la firma se incorporan al borrador dentro de la aplicación. Reemplazá los identificadores que puedan aparecer en texto libre, notas de grilla o adjuntos. La opción `store=False` controla el almacenamiento de la interacción para recuperarla vía API. El tratamiento de los datos enviados se rige por los términos del servicio Gemini.
+Activá **Asistencia de redacción con Gemini**. Configurá `GEMINI_API_KEY` en el entorno o en los secretos de Streamlit, o ingresala en la sesión. Verificá qué modelos están habilitados para la clave. El envío requiere confirmación y se limita a las notas por dominio, la guía de estilo aprobada para ese envío y los adjuntos revisados. El texto propuesto se incorpora solamente en los dominios con notas. Las extracciones de adjuntos se presentan en un apartado que pide cotejo con el original. Los campos de filiación, la grilla, las conclusiones y las recomendaciones se ensamblan en la aplicación. Revisá que las notas por dominio y adjuntos estén desidentificados antes de enviarlos. La opción `store=False` controla el almacenamiento de la interacción para recuperarla vía API. El tratamiento de los datos enviados se rige por los términos del servicio Gemini.
 
 Probá el flujo con casos ficticios y ejecutá la app en un entorno privado. Revisá la fuente de los puntajes y el borrador completo antes de compartir un informe.
 

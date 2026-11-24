@@ -196,25 +196,35 @@ class TestPsicometria(unittest.TestCase):
 
 class TestMotorIA(unittest.TestCase):
     def test_system_prompt_y_prompt_caso_omision_vacios(self):
-        sys_prompt = motor_ia.construir_system_prompt()
-        self.assertIn("no generes filiación", sys_prompt)
-        self.assertIn("No inventes pruebas", sys_prompt)
-        self.assertIn("Woodcock-Muñoz", sys_prompt)
-        self.assertIn("Hit RT", sys_prompt)
-        self.assertIn(catalogo_clinico.INTRODUCCIONES_DOMINIOS["intelectual"], sys_prompt)
-
-        prompt_caso = motor_ia.construir_prompt_caso(
+        self.assertIn("No inventes pruebas", motor_ia.construir_system_prompt())
+        prompt = motor_ia.construir_prompt_caso(
             {
-                "nombre": "Ana Gómez",
-                "conducta": {"Contacto y vínculo": "Adecuado", "Predisposición": ""},
+                "nombre": "Caso ficticio",
+                "impresion_destacar": "Síntesis local",
+                "tabla_z_markdown": "Grilla privada",
                 "observaciones_cualitativas": {"Memoria y Aprendizaje": "", "Atención": "Descenso sostenido"},
             }
         )
-        self.assertNotIn("Ana Gómez", prompt_caso)
-        self.assertIn("- **Contacto y vínculo:** Adecuado", prompt_caso)
-        self.assertNotIn("Predisposición", prompt_caso)
-        self.assertNotIn("Memoria y Aprendizaje", prompt_caso)
-        self.assertIn("- **Atención:** Descenso sostenido", prompt_caso)
+        self.assertEqual(prompt, '{"dominios": {"Atención": "Descenso sostenido"}}')
+
+    def test_rechaza_secciones_nuevas_y_adjuntos_no_cargados(self):
+        ejemplos = (
+            '{"dominios":{"Dominio inventado":"Hallazgo"},"datos_adjuntos":""}',
+            '{"dominios":{},"datos_adjuntos":"Resultado inventado"}',
+            '{"dominios":{},"datos_adjuntos":"","conclusiones":"Diagnóstico inventado"}',
+            '{"dominios":{"Atención":["no es texto"]},"datos_adjuntos":""}',
+        )
+        for texto in ejemplos:
+            with self.subTest(texto=texto), self.assertRaises(motor_ia.RespuestaRedaccionInvalida):
+                motor_ia.validar_redaccion(texto, {"Atención": "Nota de prueba"}, False)
+
+    def test_conserva_nota_original_si_la_redaccion_cambia_cifras(self):
+        salida = motor_ia.validar_redaccion(
+            '{"dominios":{"Lectura":"Registró 16 respuestas."},"datos_adjuntos":""}',
+            {"Lectura": "Registró 15 respuestas."},
+            False,
+        )
+        self.assertEqual(salida["dominios"], {})
 
     def test_resolver_api_key_con_permission_error(self):
         class SecretsQueFalla:
@@ -272,7 +282,7 @@ class TestMotorIA(unittest.TestCase):
         fake_uploaded = MagicMock(uri="files/remoto-1")
         fake_uploaded.name = "files/remoto-1"
         fake_client.files.upload.return_value = fake_uploaded
-        fake_client.interactions.create.return_value = MagicMock(output_text="## Conclusiones\n\nTexto final")
+        fake_client.interactions.create.return_value = MagicMock(output_text='{"dominios":{},"datos_adjuntos":"Adjunto 1, página 2. Resultado registrado."}')
 
         with patch("motor_ia.genai.Client", return_value=fake_client):
             texto = motor_ia.generar_informe_clinico(
@@ -285,13 +295,15 @@ class TestMotorIA(unittest.TestCase):
                 store=False,
             )
 
-        self.assertIn("## Conclusiones\n\nTexto final", texto)
+        self.assertIn("Adjunto 1, página 2. Resultado registrado.", texto)
+        self.assertIn("verificar con el original", texto)
         self.assertIn("Paciente Test", texto)
         self.assertIn("| +0.40 |", texto)
         call_kwargs = fake_client.interactions.create.call_args.kwargs
         self.assertEqual(call_kwargs["model"], "gemini-4-hydrogen")
         self.assertNotIn("Paciente Test", str(call_kwargs["input"]))
         self.assertNotIn("DEMO-123", str(call_kwargs["input"]))
+        self.assertNotIn("+0.40", str(call_kwargs["input"]))
         self.assertIn("Guía de prueba", str(call_kwargs["input"]))
         self.assertFalse(call_kwargs["store"])
         self.assertEqual(call_kwargs["generation_config"]["thinking_level"], "xhigh")
@@ -395,6 +407,51 @@ class TestMemoriaYBorrador(unittest.TestCase):
         self.assertEqual([celda.text for celda in doc.tables[0].rows[1].cells], ["Prueba_A", "+0.40", "A | B *C*"])
 
 
+    def test_informe_psicopedagogico_con_fuentes_e_integracion(self):
+        md = borrador.construir_borrador(
+            {
+                "modelos_seleccionados": ["Evaluación Psicopedagógica Infantil"],
+                "quien_deriva": "Primera observación\nSegunda observación",
+                "pruebas_usadas": ["Prueba ficticia"],
+                "fuentes_resultados": "Protocolo de práctica",
+                "tabla_z_markdown": "| Resultado |\n| --- |\n| +0.50 |",
+                "observaciones_cualitativas": {"Lectura": "Observación original", "Cálculo": ""},
+                "fortalezas": "Fortaleza consignada",
+                "limitaciones": "Limitación explícita",
+                "fundamento_recomendaciones": "Vínculo con el hallazgo",
+                "detalle_escolares": "- Recomendación acordada",
+            },
+            redaccion={"dominios": {"Lectura": "Observación revisada"}, "datos_adjuntos": ""},
+        )
+        self.assertTrue(md.startswith("# Evaluación Psicopedagógica Infantil"))
+        self.assertLess(md.index("## Técnicas implementadas"), md.index("## Resultados registrados"))
+        self.assertIn("Primera observación\n\nSegunda observación", md)
+        self.assertIn("### Lectura\n\nObservación revisada", md)
+        self.assertNotIn("### Cálculo", md)
+        self.assertIn("Protocolo de práctica", md)
+        self.assertIn("+0.50", md)
+        self.assertIn("Completar la integración profesional", md)
+        self.assertIn("Vínculo con el hallazgo", md)
+        self.assertIn("### Para la escuela", md)
+        self.assertNotIn("### Terapéuticas", md)
+
+    def test_revision_identifica_filas_con_datos_invalidos_y_posibles_duplicados(self):
+        columnas = ["Dominio / Prueba / Subtest", "Puntaje", "Tipo de Escala", "Observación"]
+        pc = catalogo_clinico.ESCALA_PERCENTIL
+        filas = [
+            ["Sin completar", None, "", ""],
+            ["", 50, pc, ""],
+            ["Prueba A", 0, pc, ""],
+            ["prueba a", None, "", "Segunda condición"],
+            ["Prueba B", 30, "", ""],
+            ["Prueba C", 10, catalogo_clinico.ESCALA_BRUTO, ""],
+        ]
+        errores, avisos = psicometria.revisar_carga_puntajes(pd.DataFrame(filas, columns=columnas))
+        self.assertEqual([mensaje.split(":")[0] for mensaje in errores], ["Fila 2", "Fila 3", "Fila 5"])
+        self.assertEqual(len(avisos), 1)
+        self.assertIn("Filas 3 y 4", avisos[0])
+
+
 class TestAppStreamlit(unittest.TestCase):
     def test_apptest_flujo_completo_y_persistencia(self):
         from streamlit.testing.v1 import AppTest
@@ -431,6 +488,9 @@ class TestAppStreamlit(unittest.TestCase):
                 self.assertIn("Caso de prueba", at.session_state["informe_actual"])
                 self.assertIn("WISC-V", at.session_state["informe_actual"])
 
+                siguiente = next(campo for campo in at.text_area if campo.label.startswith("Funcionamiento Intelectual"))
+                siguiente.set_value("Observación sintética de prueba").run()
+                self.assertTrue(all(boton.proto.disabled for boton in at.get("download_button")))
                 at.sidebar.toggle[0].set_value(True).run()
                 if at.sidebar.text_input:
                     at.sidebar.text_input[0].set_value("fake-api-key").run()
@@ -445,6 +505,7 @@ class TestAppStreamlit(unittest.TestCase):
 
             at.sidebar.number_input[0].set_value(50.0).run()
             self.assertIn("Texto asistido de prueba", at.session_state["informe_actual"])
+            self.assertFalse(any(boton.proto.disabled for boton in at.get("download_button")))
 
             deprecations = [
                 str(w.message)
